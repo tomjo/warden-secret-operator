@@ -4,6 +4,7 @@
 extern crate log;
 
 use std::{env};
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 
 use std::sync::Arc;
@@ -103,12 +104,17 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
 
             let mut secret_keys: BTreeMap<String, String> = BTreeMap::new();
             // TODO retrieve fields/attachments from bitwarden item spec.item
+            secret_keys.insert("foo".to_owned(), "bar".to_owned());
+
+
 
             let owner_ref = OwnerReference {
-                api_version: DynamicObject::api_version(bitwarden_secret.as_ref()).to_string(),
-                kind: Resource::kind(bitwarden_secret.as_ref()).to_string(),
-                name,
-                uid: bitwarden_secret.uid().expect(&format!("Bitwarden secret without uid: {}/{}", namespace, name)),
+                // api_version: api_v_test(bitwarden_secret.as_ref()),
+                // kind: kind_test(bitwarden_secret.as_ref()),
+                api_version: "".to_string(),
+                kind: "".to_string(),
+                name: name.clone(),
+                uid: bitwarden_secret.uid().expect(&format!("Bitwarden secret without uid: {}/{}", namespace, &name)),
                 block_owner_deletion: Some(true),
                 controller: None,
             };
@@ -125,6 +131,20 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
         }
         BitwardenSecretAction::NoOp => Ok(Action::requeue(Duration::from_secs(10))),
     };
+}
+
+pub fn api_v_test<T: Resource<DynamicType = ()>>(resource: &BitwardenSecret) -> String {
+    return T::api_version(&()).to_string();
+        // .kind(T::kind(&()))
+        // .name(resource.name_any())
+        // .uid_opt(resource.meta().uid.clone());
+}
+
+pub fn kind_test<T: Resource<DynamicType = ()>>(resource: &BitwardenSecret) -> String {
+    return T::kind(&()).to_string();
+        // .kind(T::kind(&()))
+        // .name(resource.name_any())
+        // .uid_opt(resource.meta().uid.clone());
 }
 
 fn determine_action(bitwarden_secret: &BitwardenSecret) -> BitwardenSecretAction {
@@ -185,7 +205,7 @@ pub async fn create_secret(
             name: Some(name.to_owned()),
             namespace: Some(namespace.to_owned()),
             labels: Some(labels.clone()),
-            owner_references: Some(vec![owner_ref]),
+            // owner_references: Some(vec![owner_ref]),
             ..ObjectMeta::default()
         },
         string_data: Some(secret_keys.clone()),
