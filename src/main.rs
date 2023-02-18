@@ -26,6 +26,7 @@ use crate::crd::BitwardenSecret;
 
 pub mod crd;
 
+// TODO add status
 #[tokio::main]
 async fn main() {
     env::set_var("RUST_LOG", "info");
@@ -111,8 +112,8 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
             let owner_ref = OwnerReference {
                 // api_version: api_v_test(bitwarden_secret.as_ref()),
                 // kind: kind_test(bitwarden_secret.as_ref()),
-                api_version: "".to_string(),
-                kind: "".to_string(),
+                api_version: "tomjo.net/v1".to_string(),
+                kind: "BitwardenSecret".to_string(),
                 name: name.clone(),
                 uid: bitwarden_secret.uid().expect(&format!("Bitwarden secret without uid: {}/{}", namespace, &name)),
                 block_owner_deletion: Some(true),
@@ -205,7 +206,7 @@ pub async fn create_secret(
             name: Some(name.to_owned()),
             namespace: Some(namespace.to_owned()),
             labels: Some(labels.clone()),
-            // owner_references: Some(vec![owner_ref]),
+            owner_references: Some(vec![owner_ref]),
             ..ObjectMeta::default()
         },
         string_data: Some(secret_keys.clone()),
