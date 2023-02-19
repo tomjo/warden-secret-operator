@@ -142,14 +142,14 @@ impl BitwardenClientWrapper {
             .output()?;
         let status = output.status;
         info!("Status: {status}");
-        let output = String::from_utf8(output.stdout)?;
+        let out = String::from_utf8(output.stdout)?;
         let err = String::from_utf8(output.stderr)?;
-        info!("Out: {output}");
+        info!("Out: {out}");
         info!("Err: {err}");
         if output.status.success() {
-            return Ok(output);
+            return Ok(out);
         }
-        return Err(BitwardenCommandError::BitwardenCommandError(String::from_utf8(output.stderr).unwrap_or(String::new())));
+        return Err(BitwardenCommandError::BitwardenCommandError(err));
     }
 }
 
