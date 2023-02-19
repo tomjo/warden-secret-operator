@@ -4,7 +4,7 @@
 extern crate log;
 
 use std::{env};
-use std::borrow::Cow;
+use std::borrow::{Cow, ToOwned};
 use std::collections::BTreeMap;
 
 use std::sync::Arc;
@@ -19,25 +19,42 @@ use kube::{
 };
 use tokio::time::Duration;
 use kube::api::{DeleteParams, Patch, PatchParams, PostParams};
-use kube::core::DynamicObject;
 use serde_json::{json, Value};
+use config::Config;
+use const_format::formatcp;
+use crate::bw::BitwardenClientWrapper;
 
 use crate::crd::BitwardenSecret;
 
 pub mod crd;
+mod bw;
+// mod bitwarden;
+
+const BW_OPERATOR_ENV_PREFIX: &'static str = "BW_OPERATOR";
+const ENV_CONFIG_PATH: &'static str = formatcp!("{}_CONFIG", BW_OPERATOR_ENV_PREFIX);
+const DEFAULT_CONFIG_PATH: &'static str = "config/config";
 
 // TODO add status
+// TODO Watch secret deletion, if owner refs contains a bitwardensecret, recreate
 #[tokio::main]
 async fn main() {
     env::set_var("RUST_LOG", "info");
     env_logger::init();
+
+    let config: Config = Config::builder()
+        .add_source(config::File::with_name(& env::var(ENV_CONFIG_PATH).unwrap_or(DEFAULT_CONFIG_PATH.to_owned())))
+        .add_source(config::Environment::with_prefix(BW_OPERATOR_ENV_PREFIX))
+        .build()
+        .expect("Could not initialize config");
+
+    let bw_client = BitwardenClientWrapper::new(config);
 
     let kubernetes_client: Client = Client::try_default()
         .await
         .expect("Expected a valid KUBECONFIG environment variable.");
 
     let crd_api: Api<BitwardenSecret> = Api::all(kubernetes_client.clone());
-    let context: Arc<ContextData> = Arc::new(ContextData::new(kubernetes_client.clone()));
+    let context: Arc<ContextData> = Arc::new(ContextData::new(kubernetes_client.clone(), bw_client));
 
     // The controller comes from the `kube_runtime` crate and manages the reconciliation process.
     // It requires the following information:
@@ -62,11 +79,12 @@ async fn main() {
 
 struct ContextData {
     client: Client,
+    bw_client: BitwardenClientWrapper,
 }
 
 impl ContextData {
-    pub fn new(client: Client) -> Self {
-        ContextData { client }
+    pub fn new(client: Client, bw_client: BitwardenClientWrapper) -> Self {
+        ContextData { client , bw_client}
     }
 }
 
@@ -78,17 +96,12 @@ enum BitwardenSecretAction {
 
 async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextData>) -> Result<Action, Error> {
     let client: Client = context.client.clone(); // The `Client` is shared -> a clone from the reference is obtained
+    let mut bw_client: BitwardenClientWrapper = context.bw_client.clone(); // The `Client` is shared -> a clone from the reference is obtained
 
     // The resource of `BitwardenSecret` kind is required to have a namespace set. However, it is not guaranteed
     // the resource will have a `namespace` set. Therefore, the `namespace` field on object's metadata
     // is optional and Rust forces the programmer to check for it's existence first.
     let namespace: String = match bitwarden_secret.namespace() {
-        // None => {
-        //     return Err(Error::UserInputError(
-        //         "Expected BitwardenSecret resource to be namespaced. Can't deploy to an unknown namespace."
-        //             .to_owned(),
-        //     ));
-        // }
         None => "default".to_string(),
         Some(namespace) => namespace,
     };
@@ -103,9 +116,11 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
             labels.insert("app".to_owned(), name.to_owned());
             // TODO copy labels (all but?)
 
-            let mut secret_keys: BTreeMap<String, String> = BTreeMap::new();
-            // TODO retrieve fields/attachments from bitwarden item spec.item
-            secret_keys.insert("foo".to_owned(), "bar".to_owned());
+            let result = bw_client.fetch_item("homelab/argo-minio".to_string());
+            if result.is_err() {
+                bw_client.reset();
+            }
+            let secret_keys: BTreeMap<String, String> = result.unwrap();
 
 
 
