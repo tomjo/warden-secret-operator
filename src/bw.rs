@@ -9,8 +9,8 @@ use std::string::FromUtf8Error;
 use config::Config;
 use k8s_openapi::DeepMerge;
 use secstr::*;
-use thiserror::Error;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 // use crate::bw::BitwardenCommandError::BitwardenCommandError;
 
@@ -54,7 +54,7 @@ impl BitwardenClientWrapper {
             self.session_token = Some(self.login()?);
         }
         let item_id: String = self.find_item_id(&item)?;
-        let mut fields: BTreeMap<String, String>  = self.get_item_fields(&item_id)?;
+        let mut fields: BTreeMap<String, String> = self.get_item_fields(&item_id)?;
         secrets.append(&mut fields);
         //TODO attachments
         return Ok(secrets);
@@ -140,8 +140,14 @@ impl BitwardenClientWrapper {
             .args(&[shell_command_param, command.as_str()])
             .envs(env)
             .output()?;
+        let status = output.status;
+        info!("Status: {status}");
+        let output = String::from_utf8(output.stdout)?;
+        let err = String::from_utf8(output.stderr)?;
+        info!("Out: {output}");
+        info!("Err: {err}");
         if output.status.success() {
-            return Ok(String::from_utf8(output.stdout)?);
+            return Ok(output);
         }
         return Err(BitwardenCommandError::BitwardenCommandError(String::from_utf8(output.stderr).unwrap_or(String::new())));
     }
