@@ -91,8 +91,10 @@ impl BitwardenClientWrapper {
         let mut env: BTreeMap<String, String> = BTreeMap::new();
         env.insert("BW_USER".to_string(), String::from_utf8(self.user.unsecure().to_vec())?);
         env.insert("BW_PASS".to_string(), String::from_utf8(self.password.unsecure().to_vec())?);
+        info!("Bitwarden: Logging in");
         let login_result: Result<String, BitwardenCommandError> = self.bw_command_with_env(vec!["login".to_owned(), "$BW_USER".to_owned(), "$BW_PASS".to_owned(), "--raw".to_owned()], env);
         if login_result.is_ok() {
+            info!("Bitwarden: Logged in");
             return Ok(SecStr::from(login_result.unwrap()));
         }
         let err: BitwardenCommandError = login_result.unwrap_err();
@@ -131,6 +133,8 @@ impl BitwardenClientWrapper {
             let shell: &str = "cmd";
         #[cfg(target_os = "windows")]
             let shell_command_param: &str = "/C";
+
+        info!("Executing {}", command);
 
         let output: Output = Command::new(shell)
             .args(&[shell_command_param, command.as_str()])
