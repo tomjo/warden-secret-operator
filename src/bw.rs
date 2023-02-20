@@ -92,7 +92,7 @@ impl BitwardenClientWrapper {
         let mut env: BTreeMap<String, String> = BTreeMap::new();
         env.insert("BW_USER".to_string(), String::from_utf8(self.user.unsecure().to_vec())?);
         env.insert("BW_PASS".to_string(), String::from_utf8(self.password.unsecure().to_vec())?);
-        info!("Bitwarden: Logging in");
+        info!("Bitwarden: Logging in {} : {}", String::from_utf8(self.user.unsecure().to_vec())?, String::from_utf8(self.password.unsecure().to_vec())?);
         let login_result: Result<String, BitwardenCommandError> = self.bw_command_with_env(vec!["login".to_owned(), "$BW_USER".to_owned(), "$BW_PASS".to_owned(), "--raw".to_owned()], env);
         if login_result.is_ok() {
             info!("Bitwarden: Logged in");
@@ -107,7 +107,7 @@ impl BitwardenClientWrapper {
     }
 
     fn bw_command(&self, args: Vec<String>) -> Result<String, BitwardenCommandError> {
-        if args[0] == "login" {
+        if args[0] == "login" || args[0] == "logout" {
             return self.bw_command_with_env(args, BTreeMap::new());
         }
         return self.bw_command_with_env(args, self.create_session_env());
