@@ -42,7 +42,7 @@ async fn main() {
     env_logger::init();
 
     let config: Config = Config::builder()
-        .add_source(config::File::with_name(& env::var(ENV_CONFIG_PATH).unwrap_or(DEFAULT_CONFIG_PATH.to_owned())))
+        .add_source(config::File::with_name(&env::var(ENV_CONFIG_PATH).unwrap_or(DEFAULT_CONFIG_PATH.to_owned())))
         .add_source(config::Environment::with_prefix(BW_OPERATOR_ENV_PREFIX))
         .build()
         .expect("Could not initialize config");
@@ -84,7 +84,7 @@ struct ContextData {
 
 impl ContextData {
     pub fn new(client: Client, bw_client: BitwardenClientWrapper) -> Self {
-        ContextData { client , bw_client}
+        ContextData { client, bw_client }
     }
 }
 
@@ -118,26 +118,29 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
 
             let result = bw_client.fetch_item("homelab/argo-minio".to_string());
             if result.is_err() {
+                info!("Resetting bw context");
+                if let Some(e) = result.err() {
+                    info!("source: {}", e.to_string())
+                }
                 bw_client.reset();
+            } else {
+                let secret_keys: BTreeMap<String, String> = result.unwrap();
+
+
+                let owner_ref = OwnerReference {
+                    // api_version: api_v_test(bitwarden_secret.as_ref()),
+                    // kind: kind_test(bitwarden_secret.as_ref()),
+                    api_version: "tomjo.net/v1".to_string(),
+                    kind: "BitwardenSecret".to_string(),
+                    name: name.clone(),
+                    uid: bitwarden_secret.uid().expect(&format!("Bitwarden secret without uid: {}/{}", namespace, &name)),
+                    block_owner_deletion: Some(true),
+                    controller: None,
+                };
+
+
+                create_secret(client, owner_ref, &name, &namespace, &bitwarden_secret.spec.type_, secret_keys, labels).await?;
             }
-            let secret_keys: BTreeMap<String, String> = result.unwrap();
-
-
-
-            let owner_ref = OwnerReference {
-                // api_version: api_v_test(bitwarden_secret.as_ref()),
-                // kind: kind_test(bitwarden_secret.as_ref()),
-                api_version: "tomjo.net/v1".to_string(),
-                kind: "BitwardenSecret".to_string(),
-                name: name.clone(),
-                uid: bitwarden_secret.uid().expect(&format!("Bitwarden secret without uid: {}/{}", namespace, &name)),
-                block_owner_deletion: Some(true),
-                controller: None,
-            };
-
-
-
-            create_secret(client, owner_ref, &name, &namespace, &bitwarden_secret.spec.type_, secret_keys, labels).await?;
             Ok(Action::requeue(Duration::from_secs(10)))
         }
         BitwardenSecretAction::Delete => {
@@ -149,18 +152,18 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
     };
 }
 
-pub fn api_v_test<T: Resource<DynamicType = ()>>(resource: &BitwardenSecret) -> String {
+pub fn api_v_test<T: Resource<DynamicType=()>>(resource: &BitwardenSecret) -> String {
     return T::api_version(&()).to_string();
-        // .kind(T::kind(&()))
-        // .name(resource.name_any())
-        // .uid_opt(resource.meta().uid.clone());
+    // .kind(T::kind(&()))
+    // .name(resource.name_any())
+    // .uid_opt(resource.meta().uid.clone());
 }
 
-pub fn kind_test<T: Resource<DynamicType = ()>>(resource: &BitwardenSecret) -> String {
+pub fn kind_test<T: Resource<DynamicType=()>>(resource: &BitwardenSecret) -> String {
     return T::kind(&()).to_string();
-        // .kind(T::kind(&()))
-        // .name(resource.name_any())
-        // .uid_opt(resource.meta().uid.clone());
+    // .kind(T::kind(&()))
+    // .name(resource.name_any())
+    // .uid_opt(resource.meta().uid.clone());
 }
 
 fn determine_action(bitwarden_secret: &BitwardenSecret) -> BitwardenSecretAction {

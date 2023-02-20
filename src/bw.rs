@@ -53,6 +53,7 @@ impl BitwardenClientWrapper {
         if self.session_token.is_none() {
             self.session_token = Some(self.login()?);
         }
+        info!("Finding item");
         let item_id: String = self.find_item_id(&item)?;
         let mut fields: BTreeMap<String, String> = self.get_item_fields(&item_id)?;
         secrets.append(&mut fields);
@@ -98,6 +99,7 @@ impl BitwardenClientWrapper {
             return Ok(SecStr::from(login_result.unwrap()));
         }
         let err: BitwardenCommandError = login_result.unwrap_err();
+        info!("Unwrapped err str {}", err.to_string().as_str());
         return Err(match err.to_string().as_str() {
             "Email address is invalid." | "Username or password is incorrect. Try again" => BitwardenCommandError::InvalidCredentials(err.to_string()),
             _ => BitwardenCommandError::Other(err.to_string())
