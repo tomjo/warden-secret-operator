@@ -37,7 +37,7 @@ impl BitwardenClientWrapper {
             organization: config.get_string("organization").ok(),
             session_token: None,
         };
-        bw.bw_command_with_env(vec!["config".to_string(), "server".to_string(), bw.url], BTreeMap::new()).expect("Could not configure bitwarden server");
+        bw.bw_command_with_env(vec!["config".to_string(), "server".to_string(), bw.url.to_string()], BTreeMap::new()).expect("Could not configure bitwarden server");
         return bw;
     }
 
