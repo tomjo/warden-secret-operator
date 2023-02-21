@@ -29,14 +29,16 @@ pub struct BitwardenClientWrapper {
 impl BitwardenClientWrapper {
     #[must_use]
     pub fn new(config: Config) -> Self {
-        BitwardenClientWrapper {
+        let bw = BitwardenClientWrapper {
             bw_path: config.get_string("bw_path").unwrap_or("/usr/bin/bw".to_owned()),
             url: config.get_string("url").unwrap_or(DEFAULT_INSTANCE_URL.to_owned()),
             user: SecStr::from(config.get_string("user").expect("Bitwarden user not configured.").as_str()),
             password: SecStr::from(config.get_string("pass").expect("Bitwarden password not configured.").as_str()),
             organization: config.get_string("organization").ok(),
             session_token: None,
-        }
+        };
+        bw.bw_command_with_env(vec!["config".to_string(), "server".to_string(), bw.url], BTreeMap::new()).expect("Could not configure bitwarden server");
+        return bw;
     }
 
     fn find_collection_id(&self, collection: String) -> Result<String, BitwardenCommandError> {
@@ -93,8 +95,8 @@ impl BitwardenClientWrapper {
         env.insert("BW_USER".to_string(), String::from_utf8(self.user.unsecure().to_vec())?);
         env.insert("BW_PASS".to_string(), String::from_utf8(self.password.unsecure().to_vec())?);
         info!("Bitwarden: Logging in {} : {}", String::from_utf8(self.user.unsecure().to_vec())?, String::from_utf8(self.password.unsecure().to_vec())?);
-        // let login_result: Result<String, BitwardenCommandError> = self.bw_command_with_env(vec!["login".to_owned(), "$BW_USER".to_owned(), "$BW_PASS".to_owned(), "--raw".to_owned()], env);
-        let login_result: Result<String, BitwardenCommandError> = self.command_with_env("echo $BW_USER $BW_PASS".to_string(), env);
+        let login_result: Result<String, BitwardenCommandError> = self.bw_command_with_env(vec!["login".to_owned(), "$BW_USER".to_owned(), "$BW_PASS".to_owned(), "--raw".to_owned()], env);
+        // let login_result: Result<String, BitwardenCommandError> = self.command_with_env("echo $BW_USER $BW_PASS".to_string(), env);
         if login_result.is_ok() {
             info!("Bitwarden: Logged in");
             return Ok(SecStr::from(login_result.unwrap()));
