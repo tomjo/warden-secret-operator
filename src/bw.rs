@@ -93,7 +93,8 @@ impl BitwardenClientWrapper {
         env.insert("BW_USER".to_string(), String::from_utf8(self.user.unsecure().to_vec())?);
         env.insert("BW_PASS".to_string(), String::from_utf8(self.password.unsecure().to_vec())?);
         info!("Bitwarden: Logging in {} : {}", String::from_utf8(self.user.unsecure().to_vec())?, String::from_utf8(self.password.unsecure().to_vec())?);
-        let login_result: Result<String, BitwardenCommandError> = self.bw_command_with_env(vec!["login".to_owned(), "$BW_USER".to_owned(), "$BW_PASS".to_owned(), "--raw".to_owned()], env);
+        // let login_result: Result<String, BitwardenCommandError> = self.bw_command_with_env(vec!["login".to_owned(), "$BW_USER".to_owned(), "$BW_PASS".to_owned(), "--raw".to_owned()], env);
+        let login_result: Result<String, BitwardenCommandError> = self.command_with_env("echo $BW_USER $BW_PASS".to_string(), env);
         if login_result.is_ok() {
             info!("Bitwarden: Logged in");
             return Ok(SecStr::from(login_result.unwrap()));
