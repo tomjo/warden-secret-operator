@@ -2,7 +2,7 @@
 
 FROM debian:bullseye-20230208
 
-ARG BW_VERSION=1.22.1
+ARG BW_VERSION=1.91.1
 ENV BW_VERSION ${BW_VERSION}
 
 RUN apt-get update \

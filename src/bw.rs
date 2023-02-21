@@ -130,7 +130,7 @@ impl BitwardenClientWrapper {
 
     fn command_with_env(&self, command: String, env: BTreeMap<String, String>) -> Result<String, BitwardenCommandError> {
         #[cfg(not(target_os = "windows"))]
-            let shell: &str = "/bin/sh";
+            let shell: &str = "/bin/bash";
         #[cfg(not(target_os = "windows"))]
             let shell_command_param: &str = "-c";
 
