@@ -44,9 +44,9 @@ impl BitwardenClientWrapper {
     fn find_collection_id(&self, collection: String) -> Result<String, BitwardenCommandError> {
         return if self.organization.is_some() {
             let org = self.organization.as_ref().unwrap().clone();
-            self.command_with_env(format!("bw list org-collections --organizationid {org} --search \"{collection}\"  | jq -r -c '.[] | select( .name == \"{collection}\") | .id'"), self.create_session_env())
+            self.command_with_env(format!("bw list org-collections --organizationid '{org}' --search \"{collection}\"  | jq -r -c '.[] | select( .name == \"{collection}\") | .id'"), self.create_session_env())
         } else {
-            self.command_with_env(format!("bw list collections --search \"{collection}\"  | jq -r -c '.[] | select( .name == \"{collection}\") | .id'"), self.create_session_env())
+            self.command_with_env(format!("bw list collections --search \"{collection}\" | jq -r -c '.[] | select( .name == \"{collection}\") | .id'"), self.create_session_env())
         };
     }
 
@@ -70,7 +70,7 @@ impl BitwardenClientWrapper {
 
     fn get_item_fields(&self, item_id: &str) -> Result<BTreeMap<String, String>, BitwardenCommandError> {
         let mut fields: BTreeMap<String, String> = BTreeMap::new();
-        let json_fields: String = self.command_with_env(format!("bw get item {item_id} | jq .fields"), self.create_session_env())?;
+        let json_fields: String = self.command_with_env(format!("bw get item '{item_id}' | jq .fields"), self.create_session_env())?;
         let result: Vec<ItemField> = serde_json::from_str(&json_fields)?;
         for x in result {
             fields.insert(x.name, x.value);
@@ -83,9 +83,9 @@ impl BitwardenClientWrapper {
         let item_name = split_item[1];
         if split_item[0].len() > 0 {
             let collection_id: String = self.find_collection_id(split_item[0].to_string())?;
-            return self.command_with_env(format!("bw list items --search {item_name} --collectionid {collection_id} | jq -r -c '.[] | select( .name == \"{item_name}\") | .id'"), self.create_session_env());
+            return self.command_with_env(format!("bw list items --search '{item_name}' --collectionid '{collection_id}' | jq -r -c '.[] | select( .name == \"{item_name}\") | .id'"), self.create_session_env());
         }
-        return self.command_with_env(format!("bw list items --search {item_name} | jq -r -c '.[] | select( .name == \"{item_name}\") | .id'"), self.create_session_env());
+        return self.command_with_env(format!("bw list items --search '{item_name}' | jq -r -c '.[] | select( .name == \"{item_name}\") | .id'"), self.create_session_env());
     }
 
 
