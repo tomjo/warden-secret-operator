@@ -147,8 +147,10 @@ impl BitwardenClientWrapper {
             .output()?;
         let status = output.status;
         info!("Status: {status}");
-        let out = String::from_utf8(output.stdout)?;
-        let err = String::from_utf8(output.stderr)?;
+        let mut out: String = String::from_utf8(output.stdout)?;
+        let mut err = String::from_utf8(output.stderr)?;
+        trim_newline(&mut out);
+        trim_newline(&mut err);
         info!("Out: {out}");
         info!("Err: {err}");
         if output.status.success() {
@@ -158,6 +160,14 @@ impl BitwardenClientWrapper {
     }
 }
 
+fn trim_newline(s: &mut String) {
+    if s.ends_with('\n') {
+        s.pop();
+        if s.ends_with('\r') {
+            s.pop();
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ItemField {
