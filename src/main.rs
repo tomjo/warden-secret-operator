@@ -4,10 +4,10 @@
 extern crate log;
 
 use std::{env};
-use std::borrow::{Cow, ToOwned};
+use std::borrow::{BorrowMut, Cow, ToOwned};
 use std::collections::BTreeMap;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use futures::stream::StreamExt;
 use k8s_openapi::api::core::v1::{Secret};
@@ -54,7 +54,8 @@ async fn main() {
         .expect("Expected a valid KUBECONFIG environment variable.");
 
     let crd_api: Api<BitwardenSecret> = Api::all(kubernetes_client.clone());
-    let context: Arc<ContextData> = Arc::new(ContextData::new(kubernetes_client.clone(), bw_client));
+    let bw_mutex = Mutex::new(bw_client);
+    let context: Arc<ContextData> = Arc::new(ContextData::new(kubernetes_client.clone(), bw_mutex));
 
     // The controller comes from the `kube_runtime` crate and manages the reconciliation process.
     // It requires the following information:
@@ -79,11 +80,11 @@ async fn main() {
 
 struct ContextData {
     client: Client,
-    bw_client: BitwardenClientWrapper,
+    bw_client: Mutex<BitwardenClientWrapper>,
 }
 
 impl ContextData {
-    pub fn new(client: Client, bw_client: BitwardenClientWrapper) -> Self {
+    pub fn new(client: Client, bw_client: Mutex<BitwardenClientWrapper>) -> Self {
         ContextData { client, bw_client }
     }
 }
@@ -94,9 +95,15 @@ enum BitwardenSecretAction {
     NoOp,
 }
 
+async fn pre_reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextData>) -> Result<Action, Error> {
+
+    return reconcile(bitwarden_secret, context);
+}
+
 async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextData>) -> Result<Action, Error> {
     let client: Client = context.client.clone(); // The `Client` is shared -> a clone from the reference is obtained
-    let mut bw_client: BitwardenClientWrapper = context.bw_client.clone(); // The `Client` is shared -> a clone from the reference is obtained
+    let mut guard: MutexGuard<BitwardenClientWrapper> = context.bw_client.lock().unwrap();
+    let mut bw_client: &BitwardenClientWrapper = guard.borrow_mut();
 
     // The resource of `BitwardenSecret` kind is required to have a namespace set. However, it is not guaranteed
     // the resource will have a `namespace` set. Therefore, the `namespace` field on object's metadata
