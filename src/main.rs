@@ -7,7 +7,7 @@ use std::{env};
 use std::borrow::{BorrowMut, Cow, ToOwned};
 use std::collections::BTreeMap;
 
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc};
 
 use futures::stream::StreamExt;
 use k8s_openapi::api::core::v1::{Secret};
@@ -22,6 +22,7 @@ use kube::api::{DeleteParams, Patch, PatchParams, PostParams};
 use serde_json::{json, Value};
 use config::Config;
 use const_format::formatcp;
+use tokio::sync::{Mutex, MutexGuard, OwnedMutexGuard};
 use crate::bw::BitwardenClientWrapper;
 
 use crate::crd::BitwardenSecret;
@@ -95,15 +96,9 @@ enum BitwardenSecretAction {
     NoOp,
 }
 
-async fn pre_reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextData>) -> Result<Action, Error> {
-
-    return reconcile(bitwarden_secret, context);
-}
-
 async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextData>) -> Result<Action, Error> {
     let client: Client = context.client.clone(); // The `Client` is shared -> a clone from the reference is obtained
-    let mut guard: MutexGuard<BitwardenClientWrapper> = context.bw_client.lock().unwrap();
-    let mut bw_client: &BitwardenClientWrapper = guard.borrow_mut();
+    // let mut bw_client: BitwardenClientWrapper = guard.
 
     // The resource of `BitwardenSecret` kind is required to have a namespace set. However, it is not guaranteed
     // the resource will have a `namespace` set. Therefore, the `namespace` field on object's metadata
@@ -123,6 +118,8 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
             labels.insert("app".to_owned(), name.to_owned());
             // TODO copy labels (all but?)
 
+    let mut mutex_guard_fut = context.bw_client.lock();
+    let mut bw_client: MutexGuard<BitwardenClientWrapper> = mutex_guard_fut.await;
             let result = bw_client.fetch_item("homelab/argo-minio".to_string());
             if result.is_err() {
                 info!("Resetting bw context");
