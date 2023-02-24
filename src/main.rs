@@ -3,7 +3,7 @@
 #[macro_use]
 extern crate log;
 
-use std::borrow::{BorrowMut, Cow, ToOwned};
+use std::borrow::{ToOwned};
 use std::collections::BTreeMap;
 use std::env;
 use std::sync::Arc;
@@ -20,11 +20,10 @@ use kube::api::{DeleteParams, Patch, PatchParams, PostParams};
 use kube::Resource;
 use kube::ResourceExt;
 use serde_json::{json, Value};
-use tokio::sync::{Mutex, MutexGuard, OwnedMutexGuard};
+use tokio::sync::{Mutex, MutexGuard};
 use tokio::time::Duration;
 
 use crate::bw::BitwardenClientWrapper;
-use crate::bw::BitwardenCommandError::{BitwardenCommandError, Other};
 use crate::crd::BitwardenSecret;
 
 pub mod crd;
@@ -110,7 +109,7 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
         BitwardenSecretAction::Create => {
             add_finalizer(client.clone(), &name, &namespace).await?;
 
-            let mut mutex_guard_fut = context.bw_client.lock();
+            let mutex_guard_fut = context.bw_client.lock();
             let mut bw_client: MutexGuard<BitwardenClientWrapper> = mutex_guard_fut.await;
 
             let result = bw_client.fetch_item(bitwarden_secret.spec.item.to_owned());
@@ -143,7 +142,7 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
             delete_finalizer(client, &name, &namespace).await?;
             Ok(Action::await_change())
         }
-        BitwardenSecretAction::NoOp => Ok(Action::requeue(Duration::from_secs(10))),
+        BitwardenSecretAction::NoOp => Ok(Action::requeue(Duration::from_secs(120))),
     };
 }
 
