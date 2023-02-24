@@ -3,9 +3,9 @@
 #[macro_use]
 extern crate log;
 
-use std::env;
 use std::borrow::{BorrowMut, Cow, ToOwned};
 use std::collections::BTreeMap;
+use std::env;
 use std::sync::Arc;
 
 use config::Config;
@@ -24,6 +24,7 @@ use tokio::sync::{Mutex, MutexGuard, OwnedMutexGuard};
 use tokio::time::Duration;
 
 use crate::bw::BitwardenClientWrapper;
+use crate::bw::BitwardenCommandError::{BitwardenCommandError, Other};
 use crate::crd::BitwardenSecret;
 
 pub mod crd;
@@ -96,12 +97,8 @@ enum BitwardenSecretAction {
 }
 
 async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextData>) -> Result<Action, Error> {
-    let client: Client = context.client.clone(); // The `Client` is shared -> a clone from the reference is obtained
-    // let mut bw_client: BitwardenClientWrapper = guard.
+    let client: Client = context.client.clone();
 
-    // The resource of `BitwardenSecret` kind is required to have a namespace set. However, it is not guaranteed
-    // the resource will have a `namespace` set. Therefore, the `namespace` field on object's metadata
-    // is optional and Rust forces the programmer to check for it's existence first.
     let namespace: String = match bitwarden_secret.namespace() {
         None => "default".to_string(),
         Some(namespace) => namespace,
@@ -113,37 +110,31 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
         BitwardenSecretAction::Create => {
             add_finalizer(client.clone(), &name, &namespace).await?;
 
-            let mut labels: BTreeMap<String, String> = BTreeMap::new();
-            labels.insert("app".to_owned(), name.to_owned());
-            // TODO copy labels (all but?)
-
             let mut mutex_guard_fut = context.bw_client.lock();
             let mut bw_client: MutexGuard<BitwardenClientWrapper> = mutex_guard_fut.await;
 
             let result = bw_client.fetch_item(bitwarden_secret.spec.item.to_owned());
-            if result.is_err() {
-                info!("Resetting bw context");
-                if let Some(e) = result.err() {
-                    info!("source: {}", e.to_string())
-                }
-                bw_client.reset();
-            } else {
+            if result.is_ok() {
                 let secret_keys: BTreeMap<String, String> = result.unwrap();
 
-
                 let owner_ref = OwnerReference {
+                    // TODO get from resource
                     // api_version: api_v_test(bitwarden_secret.as_ref()),
                     // kind: kind_test(bitwarden_secret.as_ref()),
                     api_version: "tomjo.net/v1".to_string(),
                     kind: "BitwardenSecret".to_string(),
                     name: name.clone(),
-                    uid: bitwarden_secret.uid().expect(&format!("Bitwarden secret without uid: {}/{}", namespace, &name)),
+                    uid: bitwarden_secret.uid().expect("uid should always be set by serve"),
                     block_owner_deletion: Some(true),
                     controller: None,
                 };
 
-
-                create_secret(client, owner_ref, &name, &namespace, &bitwarden_secret.spec.type_, secret_keys, labels).await?;
+                let labels: BTreeMap<String, String> = bitwarden_secret.metadata.labels.clone().unwrap_or(BTreeMap::new());
+                let annotations: BTreeMap<String, String> = bitwarden_secret.metadata.annotations.clone().unwrap_or(BTreeMap::new());
+                create_secret(client, owner_ref, &name, &namespace, &bitwarden_secret.spec.type_, secret_keys, labels, annotations).await?;
+            } else {
+                error!("{}", result.err().unwrap().to_string());
+                bw_client.reset();
             }
             Ok(Action::requeue(Duration::from_secs(10)))
         }
@@ -184,7 +175,6 @@ fn determine_action(bitwarden_secret: &BitwardenSecret) -> BitwardenSecretAction
     };
 }
 
-/// TODO Note: Does not check for resource's existence for simplicity.
 pub async fn add_finalizer(client: Client, name: &str, namespace: &str) -> Result<BitwardenSecret, Error> {
     let api: Api<BitwardenSecret> = Api::namespaced(client, namespace);
     let finalizer: Value = json!({
@@ -222,12 +212,14 @@ pub async fn create_secret(
     type_: &str,
     secret_keys: BTreeMap<String, String>,
     labels: BTreeMap<String, String>,
+    annotations: BTreeMap<String, String>,
 ) -> Result<Secret, KubeError> {
     let secret: Secret = Secret {
         metadata: ObjectMeta {
             name: Some(name.to_owned()),
             namespace: Some(namespace.to_owned()),
             labels: Some(labels.clone()),
+            annotations: Some(annotations.clone()),
             owner_references: Some(vec![owner_ref]),
             ..ObjectMeta::default()
         },
