@@ -3,28 +3,27 @@
 #[macro_use]
 extern crate log;
 
-use std::{env};
+use std::env;
 use std::borrow::{BorrowMut, Cow, ToOwned};
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
-use std::sync::{Arc};
-
-use futures::stream::StreamExt;
-use k8s_openapi::api::core::v1::{Secret};
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ObjectMeta, OwnerReference};
-use kube::Resource;
-use kube::ResourceExt;
-use kube::{
-    api::ListParams, client::Client, runtime::controller::Action, runtime::Controller, Api, Error as KubeError,
-};
-use tokio::time::Duration;
-use kube::api::{DeleteParams, Patch, PatchParams, PostParams};
-use serde_json::{json, Value};
 use config::Config;
 use const_format::formatcp;
+use futures::stream::StreamExt;
+use k8s_openapi::api::core::v1::Secret;
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ObjectMeta, OwnerReference};
+use kube::{
+    Api, api::ListParams, client::Client, Error as KubeError, runtime::Controller, runtime::controller::Action,
+};
+use kube::api::{DeleteParams, Patch, PatchParams, PostParams};
+use kube::Resource;
+use kube::ResourceExt;
+use serde_json::{json, Value};
 use tokio::sync::{Mutex, MutexGuard, OwnedMutexGuard};
-use crate::bw::BitwardenClientWrapper;
+use tokio::time::Duration;
 
+use crate::bw::BitwardenClientWrapper;
 use crate::crd::BitwardenSecret;
 
 pub mod crd;
@@ -118,9 +117,10 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
             labels.insert("app".to_owned(), name.to_owned());
             // TODO copy labels (all but?)
 
-    let mut mutex_guard_fut = context.bw_client.lock();
-    let mut bw_client: MutexGuard<BitwardenClientWrapper> = mutex_guard_fut.await;
-            let result = bw_client.fetch_item("homelab/argo-minio".to_string());
+            let mut mutex_guard_fut = context.bw_client.lock();
+            let mut bw_client: MutexGuard<BitwardenClientWrapper> = mutex_guard_fut.await;
+
+            let result = bw_client.fetch_item(bitwarden_secret.spec.item.to_owned());
             if result.is_err() {
                 info!("Resetting bw context");
                 if let Some(e) = result.err() {
