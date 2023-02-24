@@ -55,11 +55,11 @@ impl BitwardenClientWrapper {
         if self.session_token.is_none() {
             self.session_token = Some(self.login()?);
         }
-        info!("Finding item");
         let item_id: String = self.find_item_id(&item)?;
         let mut fields: BTreeMap<String, String> = self.get_item_fields(&item_id)?;
+        let mut attachments: BTreeMap<String, String> = self.get_item_attachments(&item_id)?;
         secrets.append(&mut fields);
-        //TODO attachments
+        secrets.append(&mut attachments);
         return Ok(secrets);
     }
 
@@ -76,6 +76,17 @@ impl BitwardenClientWrapper {
             fields.insert(x.name, x.value);
         }
         return Ok(fields);
+    }
+
+    fn get_item_attachments(&self, item_id: &str) -> Result<BTreeMap<String, String>, BitwardenCommandError> {
+        let mut attachments: BTreeMap<String, String> = BTreeMap::new();
+        let json_attachments: String = self.command_with_env(format!("bw get item '{item_id}' | jq '[.attachments[].fileName]'"), self.create_session_env())?;
+        let attachment_names: Vec<String> = serde_json::from_str(&json_attachments)?;
+        for attachment_name in attachment_names {
+            let content = self.command_with_env(format!("bw get attachment '{attachment_name}' --itemid '{item_id}' --output /dev/stdout --quiet"), self.create_session_env())?;
+            attachments.insert(attachment_name, content);
+        }
+        return Ok(attachments);
     }
 
     fn find_item_id(&self, item: &str) -> Result<String, BitwardenCommandError> {
