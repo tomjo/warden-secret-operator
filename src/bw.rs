@@ -80,11 +80,8 @@ impl BitwardenClientWrapper {
 
     fn get_item_attachments(&self, item_id: &str) -> Result<BTreeMap<String, String>, BitwardenCommandError> {
         let mut attachments: BTreeMap<String, String> = BTreeMap::new();
-        let json_attachments: Result<String, BitwardenCommandError> = self.command_with_env(format!("bw get item '{item_id}' | jq '[.attachments[].fileName]'"), self.create_session_env());
-        if json_attachments.is_err() {
-            return Ok(attachments);
-        }
-        let attachment_names: Vec<String> = serde_json::from_str(&json_attachments.unwrap())?;
+        let json_attachments: String = self.command_with_env(format!("bw get item '{item_id}' | jq '[ select(.attachments != null) | .attachments[].fileName]'"), self.create_session_env())?;
+        let attachment_names: Vec<String> = serde_json::from_str(&json_attachments)?;
         for attachment_name in attachment_names {
             let content = self.command_with_env(format!("bw get attachment '{attachment_name}' --itemid '{item_id}' --output /dev/stdout --quiet"), self.create_session_env())?;
             attachments.insert(attachment_name, content);
