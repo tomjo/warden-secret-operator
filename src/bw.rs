@@ -70,7 +70,7 @@ impl BitwardenClientWrapper {
 
     fn get_item_fields(&self, item_id: &str) -> Result<BTreeMap<String, String>, BitwardenCommandError> {
         let mut fields: BTreeMap<String, String> = BTreeMap::new();
-        let json_fields: String = self.command_with_env(format!("bw get item '{item_id}' | jq .fields"), self.create_session_env())?;
+        let json_fields: String = self.command_with_env(format!("bw get item '{item_id}' | jq '[select(.fields != null) | .fields[]]'"), self.create_session_env())?;
         let result: Vec<ItemField> = serde_json::from_str(&json_fields)?;
         for x in result {
             fields.insert(x.name, x.value);
