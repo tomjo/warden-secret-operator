@@ -3,9 +3,10 @@
 #[macro_use]
 extern crate log;
 
-use std::borrow::{ToOwned};
+use std::borrow::ToOwned;
 use std::collections::BTreeMap;
 use std::env;
+use std::io::ErrorKind::AlreadyExists;
 use std::sync::Arc;
 
 use config::Config;
@@ -130,7 +131,17 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
 
                 let labels: BTreeMap<String, String> = bitwarden_secret.metadata.labels.clone().unwrap_or(BTreeMap::new());
                 let annotations: BTreeMap<String, String> = bitwarden_secret.metadata.annotations.clone().unwrap_or(BTreeMap::new());
-                create_secret(client, owner_ref, &name, &namespace, &bitwarden_secret.spec.type_, secret_keys, labels, annotations).await?;
+
+                let api: Api<Secret> = Api::namespaced(client.clone(), &namespace);
+                let existing_secret = api.get_opt(&name).await?;
+                if existing_secret.is_some() {
+                    let secret = existing_secret.unwrap();
+                    let mut owner_references: Vec<OwnerReference> = secret.metadata.owner_references.unwrap_or(vec![]);
+                    owner_references.push(owner_ref);
+                    merge_secret(client, owner_references, &name, &namespace, &bitwarden_secret.spec.type_, secret_keys, labels, annotations).await?;
+                } else {
+                    create_secret(client, owner_ref, &name, &namespace, &bitwarden_secret.spec.type_, secret_keys, labels, annotations).await?;
+                }
             } else {
                 error!("{}", result.err().unwrap().to_string());
                 bw_client.reset();
@@ -200,6 +211,31 @@ pub async fn delete_finalizer(client: Client, name: &str, namespace: &str) -> Re
         api.patch(name, &PatchParams::default(), &patch).await?;
     }
     Ok(())
+}
+
+pub async fn merge_secret(
+    client: Client,
+    owner_references: Vec<OwnerReference>,
+    name: &str,
+    namespace: &str,
+    type_: &str,
+    secret_keys: BTreeMap<String, String>,
+    labels: BTreeMap<String, String>,
+    annotations: BTreeMap<String, String>,
+) -> Result<Secret, KubeError> {
+    let finalizer: Value = json!({
+                "metadata": {
+                    "finalizers": ["bitwardensecrets.tomjo.net/finalizer.secret"],
+                    "ownerReferences": owner_references,
+                },
+                "stringData": secret_keys
+            });
+    info!("adding keys: {}", finalizer);
+    let secret_api: Api<Secret> = Api::namespaced(client, namespace);
+
+    let patch: Patch<&Value> = Patch::Merge(&finalizer);
+    secret_api.patch(name, &PatchParams::default(), &patch)
+        .await
 }
 
 /// TODO Note: It is assumed the resource does not already exists for simplicity. Returns an `Error` if it does.
