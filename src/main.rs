@@ -4,7 +4,7 @@
 extern crate log;
 
 use std::borrow::ToOwned;
-use std::collections::BTreeMap;
+use std::collections::btree_map::BTreeMap;
 use std::env;
 use std::io::ErrorKind::AlreadyExists;
 use std::sync::Arc;
@@ -118,9 +118,6 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
                 let secret_keys: BTreeMap<String, String> = result.unwrap();
 
                 let owner_ref = OwnerReference {
-                    // TODO get from resource
-                    // api_version: api_v_test(bitwarden_secret.as_ref()),
-                    // kind: kind_test(bitwarden_secret.as_ref()),
                     api_version: "tomjo.net/v1".to_string(),
                     kind: "BitwardenSecret".to_string(),
                     name: name.clone(),
