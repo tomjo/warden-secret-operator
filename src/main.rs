@@ -154,20 +154,6 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
     };
 }
 
-pub fn api_v_test<T: Resource<DynamicType=()>>(resource: &BitwardenSecret) -> String {
-    return T::api_version(&()).to_string();
-    // .kind(T::kind(&()))
-    // .name(resource.name_any())
-    // .uid_opt(resource.meta().uid.clone());
-}
-
-pub fn kind_test<T: Resource<DynamicType=()>>(resource: &BitwardenSecret) -> String {
-    return T::kind(&()).to_string();
-    // .kind(T::kind(&()))
-    // .name(resource.name_any())
-    // .uid_opt(resource.meta().uid.clone());
-}
-
 fn determine_action(bitwarden_secret: &BitwardenSecret) -> BitwardenSecretAction {
     return if bitwarden_secret.meta().deletion_timestamp.is_some() {
         BitwardenSecretAction::Delete
