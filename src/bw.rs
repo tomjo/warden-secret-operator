@@ -79,8 +79,7 @@ impl BitwardenClientWrapper {
         let json_attachments: String = self.command_with_env(format!("bw get item '{item_id}' | jq '[ select(.attachments != null) | .attachments[].fileName]'"), self.create_session_env())?;
         let attachment_names: Vec<String> = serde_json::from_str(&json_attachments)?;
         for attachment_name in attachment_names {
-            let mut content = self.command_with_env(format!("bw get attachment '{attachment_name}' --itemid '{item_id}' --output /dev/stdout --quiet"), self.create_session_env())?;
-            trim_newline(&mut content);
+            let content = self.command_with_env(format!("bw get attachment '{attachment_name}' --itemid '{item_id}' --output /dev/stdout --quiet"), self.create_session_env())?;
             attachments.insert(attachment_name, content);
         }
         return Ok(attachments);
