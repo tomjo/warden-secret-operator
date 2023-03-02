@@ -1,9 +1,12 @@
 extern crate secstr;
 
-use std::collections::BTreeMap;
+use std::collections::btree_map::BTreeMap;
+use std::fs::File;
 use std::io;
+use std::io::Read;
 use std::process::{Command, Output};
 use std::string::FromUtf8Error;
+use tempfile::{NamedTempFile, tempfile};
 
 use config::Config;
 use secstr::*;
@@ -79,8 +82,15 @@ impl BitwardenClientWrapper {
         let json_attachments: String = self.command_with_env(format!("bw get item '{item_id}' | jq '[ select(.attachments != null) | .attachments[].fileName]'"), self.create_session_env())?;
         let attachment_names: Vec<String> = serde_json::from_str(&json_attachments)?;
         for attachment_name in attachment_names {
-            let content = self.command_with_env(format!("bw get attachment '{attachment_name}' --itemid '{item_id}' --output /dev/stdout --quiet"), self.create_session_env())?;
+
+            let mut attachment_file: NamedTempFile = NamedTempFile::new()?;
+            let attachment_file_path: &str = attachment_file.path().to_str().unwrap();
+            self.command_with_env(format!("bw get attachment '{attachment_name}' --itemid '{item_id}' --output {attachment_file_path} --quiet"), self.create_session_env())?;
+            let mut content: String = "".to_string();
+            attachment_file.read_to_string(&mut content).expect(&format!("Temp attachment file {attachment_file_path} could not be read"));
+            info!("content {content}");
             attachments.insert(attachment_name, content);
+            drop(attachment_file);
         }
         return Ok(attachments);
     }

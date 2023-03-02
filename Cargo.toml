@@ -30,5 +30,6 @@ config = "0.13"
 secstr = "0.5.1"
 const_format = "0.2.30"
 shell-escape = "0.1.5"
+tempfile = "3.3.0"
 
 [dev-dependencies]
