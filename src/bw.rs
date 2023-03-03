@@ -88,7 +88,6 @@ impl BitwardenClientWrapper {
             self.command_with_env(format!("bw get attachment '{attachment_name}' --itemid '{item_id}' --output {attachment_file_path} --quiet"), self.create_session_env())?;
             let mut content: String = "".to_string();
             attachment_file.read_to_string(&mut content)?;
-            info!("content {content}");
             attachments.insert(attachment_name, content);
             drop(attachment_file);
         }
