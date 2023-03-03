@@ -87,7 +87,7 @@ impl BitwardenClientWrapper {
             let attachment_file_path: &str = attachment_file.path().to_str().unwrap();
             self.command_with_env(format!("bw get attachment '{attachment_name}' --itemid '{item_id}' --output {attachment_file_path} --quiet"), self.create_session_env())?;
             let mut content: String = "".to_string();
-            attachment_file.read_to_string(&mut content).expect(&format!("Temp attachment file {attachment_file_path} could not be read"));
+            attachment_file.read_to_string(&mut content)?;
             info!("content {content}");
             attachments.insert(attachment_name, content);
             drop(attachment_file);
