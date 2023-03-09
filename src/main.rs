@@ -33,7 +33,9 @@ mod bw;
 
 const BW_OPERATOR_ENV_PREFIX: &'static str = "BW_OPERATOR";
 const ENV_CONFIG_PATH: &'static str = formatcp!("{}_CONFIG", BW_OPERATOR_ENV_PREFIX);
+const ENV_NOOP_REQUEUE_DELAY: &'static str = formatcp!("{}_NOOP_REQUEUE_DELAY", BW_OPERATOR_ENV_PREFIX);
 const DEFAULT_CONFIG_PATH: &'static str = "config/config";
+const DEFAULT_NOOP_REQUEUE_DELAY: u64 = 300;
 
 // TODO add status
 // TODO Watch secret deletion, if owner refs contains a bitwardensecret, recreate
@@ -150,7 +152,7 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
             delete_finalizer(client, &name, &namespace).await?;
             Ok(Action::await_change())
         }
-        BitwardenSecretAction::NoOp => Ok(Action::requeue(Duration::from_secs(120))),
+        BitwardenSecretAction::NoOp => Ok(Action::requeue(Duration::from_secs(*&env::var(ENV_NOOP_REQUEUE_DELAY).map(|x| x.parse::<u64>().expect("NOOP_REQUEUE_DELAY should be u64")).unwrap_or(DEFAULT_NOOP_REQUEUE_DELAY)))),
     };
 }
 
