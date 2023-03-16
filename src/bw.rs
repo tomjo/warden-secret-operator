@@ -53,6 +53,7 @@ impl BitwardenClientWrapper {
         let mut secrets: BTreeMap<String, String> = BTreeMap::new();
         if self.session_token.is_none() {
             self.session_token = Some(self.login()?);
+            self.command_with_env(format!("bw sync"), self.create_session_env())?;
         }
         let item_id: String = self.find_item_id(&item)?;
         let mut fields: BTreeMap<String, String> = self.get_item_fields(&item_id)?;
