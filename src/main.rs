@@ -14,6 +14,7 @@ use const_format::formatcp;
 use futures::stream::StreamExt;
 use k8s_openapi::api::core::v1::Secret;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ObjectMeta, OwnerReference};
+use k8s_openapi::ByteString;
 use kube::{
     Api, api::ListParams, client::Client, Error as KubeError, runtime::Controller, runtime::controller::Action,
 };
@@ -115,9 +116,11 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
             let mutex_guard_fut = context.bw_client.lock();
             let mut bw_client: MutexGuard<BitwardenClientWrapper> = mutex_guard_fut.await;
 
-            let result = bw_client.fetch_item(bitwarden_secret.spec.item.to_owned());
-            if result.is_ok() {
-                let secret_keys: BTreeMap<String, String> = result.unwrap();
+            let fields_result = bw_client.fetch_item_fields(bitwarden_secret.spec.item.to_owned());
+            let attachments_result = bw_client.fetch_item_attachments(bitwarden_secret.spec.item.to_owned());
+            if fields_result.is_ok() && attachments_result.is_ok() {
+                let string_secrets: BTreeMap<String, String> = fields_result.unwrap();
+                let secrets: BTreeMap<String, ByteString> = attachments_result.unwrap();
 
                 let owner_ref = OwnerReference {
                     api_version: "tomjo.net/v1".to_string(),
@@ -137,12 +140,16 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
                     let secret = existing_secret.unwrap();
                     let mut owner_references: Vec<OwnerReference> = secret.metadata.owner_references.unwrap_or(vec![]);
                     owner_references.push(owner_ref);
-                    merge_secret(client, owner_references, &name, &namespace, &bitwarden_secret.spec.type_, secret_keys, labels, annotations).await?;
+                    merge_secret(client, owner_references, &name, &namespace, &bitwarden_secret.spec.type_, string_secrets, secrets, labels, annotations).await?;
                 } else {
-                    create_secret(client, owner_ref, &name, &namespace, &bitwarden_secret.spec.type_, secret_keys, labels, annotations).await?;
+                    create_secret(client, owner_ref, &name, &namespace, &bitwarden_secret.spec.type_, string_secrets, secrets, labels, annotations).await?;
                 }
             } else {
-                error!("{}", result.err().unwrap().to_string());
+                if fields_result.is_err() {
+                    error!("{}", fields_result.err().unwrap().to_string());
+                } else {
+                    error!("{}", attachments_result.err().unwrap().to_string());
+                }
                 bw_client.reset();
             }
             Ok(Action::requeue(Duration::from_secs(10)))
@@ -204,21 +211,22 @@ pub async fn merge_secret(
     name: &str,
     namespace: &str,
     type_: &str,
-    secret_keys: BTreeMap<String, String>,
+    string_secrets: BTreeMap<String, String>,
+    secrets: BTreeMap<String, ByteString>,
     labels: BTreeMap<String, String>,
     annotations: BTreeMap<String, String>,
 ) -> Result<Secret, KubeError> {
-    let finalizer: Value = json!({
+    let patch_json: Value = json!({
                 "metadata": {
                     "finalizers": ["bitwardensecrets.tomjo.net/finalizer.secret"],
                     "ownerReferences": owner_references,
                 },
-                "stringData": secret_keys
+                "stringData": string_secrets,
+                "data": secrets
             });
-    info!("adding keys: {}", finalizer);
     let secret_api: Api<Secret> = Api::namespaced(client, namespace);
 
-    let patch: Patch<&Value> = Patch::Merge(&finalizer);
+    let patch: Patch<&Value> = Patch::Merge(&patch_json);
     secret_api.patch(name, &PatchParams::default(), &patch)
         .await
 }
@@ -230,7 +238,8 @@ pub async fn create_secret(
     name: &str,
     namespace: &str,
     type_: &str,
-    secret_keys: BTreeMap<String, String>,
+    string_secrets: BTreeMap<String, String>,
+    secrets: BTreeMap<String, ByteString>,
     labels: BTreeMap<String, String>,
     annotations: BTreeMap<String, String>,
 ) -> Result<Secret, KubeError> {
@@ -243,7 +252,8 @@ pub async fn create_secret(
             owner_references: Some(vec![owner_ref]),
             ..ObjectMeta::default()
         },
-        string_data: Some(secret_keys.clone()),
+        string_data: Some(string_secrets.clone()),
+        data: Some(secrets.clone()),
         type_: Some(type_.to_owned()),
         ..Secret::default()
     };

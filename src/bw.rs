@@ -2,13 +2,14 @@ extern crate secstr;
 
 use std::collections::btree_map::BTreeMap;
 use std::fs::File;
-use std::io;
+use std::{fs, io};
 use std::io::Read;
 use std::process::{Command, Output};
 use std::string::FromUtf8Error;
 use tempfile::{NamedTempFile, tempfile};
 
 use config::Config;
+use k8s_openapi::ByteString;
 use secstr::*;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -49,18 +50,22 @@ impl BitwardenClientWrapper {
         };
     }
 
-    pub fn fetch_item(&mut self, item: String) -> Result<BTreeMap<String, String>, BitwardenCommandError> {
-        let mut secrets: BTreeMap<String, String> = BTreeMap::new();
+    pub fn fetch_item_fields(&mut self, item: String) -> Result<BTreeMap<String, String>, BitwardenCommandError> {
         if self.session_token.is_none() {
             self.session_token = Some(self.login()?);
             self.command_with_env(format!("bw sync"), self.create_session_env())?;
         }
         let item_id: String = self.find_item_id(&item)?;
-        let mut fields: BTreeMap<String, String> = self.get_item_fields(&item_id)?;
-        let mut attachments: BTreeMap<String, String> = self.get_item_attachments(&item_id)?;
-        secrets.append(&mut fields);
-        secrets.append(&mut attachments);
-        return Ok(secrets);
+        return self.get_item_fields(&item_id);
+    }
+
+    pub fn fetch_item_attachments(&mut self, item: String) -> Result<BTreeMap<String, ByteString>, BitwardenCommandError> {
+        if self.session_token.is_none() {
+            self.session_token = Some(self.login()?);
+            self.command_with_env(format!("bw sync"), self.create_session_env())?;
+        }
+        let item_id: String = self.find_item_id(&item)?;
+        return self.get_item_attachments(&item_id);
     }
 
     pub fn reset(&mut self) {
@@ -78,8 +83,8 @@ impl BitwardenClientWrapper {
         return Ok(fields);
     }
 
-    fn get_item_attachments(&self, item_id: &str) -> Result<BTreeMap<String, String>, BitwardenCommandError> {
-        let mut attachments: BTreeMap<String, String> = BTreeMap::new();
+    fn get_item_attachments(&self, item_id: &str) -> Result<BTreeMap<String, ByteString>, BitwardenCommandError> {
+        let mut attachments: BTreeMap<String, ByteString> = BTreeMap::new();
         let json_attachments: String = self.command_with_env(format!("bw get item '{item_id}' | jq '[ select(.attachments != null) | .attachments[].fileName]'"), self.create_session_env())?;
         let attachment_names: Vec<String> = serde_json::from_str(&json_attachments)?;
         for attachment_name in attachment_names {
@@ -87,9 +92,9 @@ impl BitwardenClientWrapper {
             let mut attachment_file: NamedTempFile = NamedTempFile::new()?;
             let attachment_file_path: &str = attachment_file.path().to_str().unwrap();
             self.command_with_env(format!("bw get attachment '{attachment_name}' --itemid '{item_id}' --output {attachment_file_path} --quiet"), self.create_session_env())?;
-            let mut content: String = "".to_string();
-            attachment_file.read_to_string(&mut content)?;
-            attachments.insert(attachment_name, content);
+            let attachment_value = fs::read(attachment_file.path())
+                .map(|v| ByteString(v))?;
+            attachments.insert(attachment_name, attachment_value);
             drop(attachment_file);
         }
         return Ok(attachments);
