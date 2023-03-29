@@ -85,16 +85,17 @@ impl BitwardenClientWrapper {
 
     fn get_item_attachments(&self, item_id: &str) -> Result<BTreeMap<String, ByteString>, BitwardenCommandError> {
         let mut attachments: BTreeMap<String, ByteString> = BTreeMap::new();
-        let json_attachments: String = self.command_with_env(format!("bw get item '{item_id}' | jq '[ select(.attachments != null) | .attachments[].fileName]'"), self.create_session_env())?;
-        let attachment_names: Vec<String> = serde_json::from_str(&json_attachments)?;
-        for attachment_name in attachment_names {
+        let json_attachments: String = self.command_with_env(format!("bw get item '{item_id}' | jq '[select(.attachments != null) | .attachments[] | {{fileName: .fileName, id: .id}}]'"), self.create_session_env())?;
+        let attachments_with_ids: Vec<Attachment> = serde_json::from_str(&json_attachments)?;
+        for attachment in attachments_with_ids {
 
             let mut attachment_file: NamedTempFile = NamedTempFile::new()?;
             let attachment_file_path: &str = attachment_file.path().to_str().unwrap();
-            self.command_with_env(format!("bw get attachment '{attachment_name}' --itemid '{item_id}' --output {attachment_file_path} --quiet"), self.create_session_env())?;
+            let attachment_id = attachment.id;
+            self.command_with_env(format!("bw get attachment '{attachment_id}' --itemid '{item_id}' --output {attachment_file_path} --quiet"), self.create_session_env())?;
             let attachment_value = fs::read(attachment_file.path())
                 .map(|v| ByteString(v))?;
-            attachments.insert(attachment_name, attachment_value);
+            attachments.insert(attachment.file_name, attachment_value);
             drop(attachment_file);
         }
         return Ok(attachments);
@@ -188,6 +189,13 @@ fn trim_newline(s: &mut String) {
             s.pop();
         }
     }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Attachment {
+    #[serde(alias = "fileName")]
+    pub file_name: String,
+    pub id: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
