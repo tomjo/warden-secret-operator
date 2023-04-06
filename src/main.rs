@@ -230,11 +230,11 @@ pub async fn add_finalizer(client: Client, name: &str, namespace: &str) -> Resul
 }
 
 pub async fn set_status(bitwarden_secret_api: &Api<BitwardenSecret>, name: &str, status: BitwardenSecretStatus) -> Result<BitwardenSecret, Error> {
-    let status_json: Value = json!({
-        "status": status
-    });
-    let patch: Patch<&Value> = Patch::Merge(&status_json);
-    Ok(bitwarden_secret_api.patch_status(name, &PatchParams::default(), &patch).await?)
+    // let status_json: Value = json!({
+    //     "status": status
+    // });
+    // let patch: Patch<&Value> = Patch::Merge(&status_json);
+    Ok(bitwarden_secret_api.replace_status(name, &PostParams::default(), serde_json::to_vec(&status)?).await?)
 }
 
 pub async fn delete_finalizer(client: Client, name: &str, namespace: &str) -> Result<(), Error> {
@@ -329,6 +329,11 @@ pub enum Error {
     KubeError {
         #[from]
         source: kube::Error,
+    },
+    #[error("Serde error: {source}")]
+    SerdeError {
+        #[from]
+        source: serde_json::Error,
     },
     #[error("Invalid BitwardenSecret CRD: {0}")]
     UserInputError(String),
