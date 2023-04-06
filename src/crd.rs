@@ -1,5 +1,5 @@
-
-use kube::CustomResource;
+use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceSubresourceStatus;
+use kube::{CustomResource, CustomResourceExt};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -20,3 +20,17 @@ pub struct BitwardenSecretSpec {
     pub type_: String,
     pub item: String,
 }
+
+#[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
+pub enum BitwardenSecretStatusX {
+    Success,
+    Failed,
+    Progressing,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+pub struct BitwardenSecretStatus {
+    pub status: BitwardenSecretStatusX,
+    pub reason: String,
+}
+

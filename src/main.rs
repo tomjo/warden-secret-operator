@@ -25,8 +25,8 @@ use serde_json::{json, Value};
 use tokio::sync::{Mutex, MutexGuard};
 use tokio::time::Duration;
 
-use crate::bw::BitwardenClientWrapper;
-use crate::crd::BitwardenSecret;
+use crate::bw::{BitwardenClientWrapper, BitwardenCommandError};
+use crate::crd::{BitwardenSecret, BitwardenSecretStatus, BitwardenSecretStatusX};
 
 pub mod crd;
 mod bw;
@@ -67,7 +67,6 @@ async fn main() {
 
         loop {
             interval.tick().await;
-            info!("Retrieving bw lock for sync");
             let mutex_guard_fut = c.bw_client.lock();
             let mut bw_client: MutexGuard<BitwardenClientWrapper> = mutex_guard_fut.await;
             info!("Syncing BitWarden vault");
@@ -130,6 +129,11 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
 
     return match determine_action(&bitwarden_secret) {
         BitwardenSecretAction::Create => {
+            let bitwarden_secret_api: Api<BitwardenSecret> = Api::namespaced(client.clone(), &namespace);
+            set_status(&bitwarden_secret_api, &name, BitwardenSecretStatus {
+                status: BitwardenSecretStatusX::Progressing,
+                reason: "".to_string(),
+            });
             add_finalizer(client.clone(), &name, &namespace).await?;
 
             let mutex_guard_fut = context.bw_client.lock();
@@ -138,6 +142,7 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
             let fields_result = bw_client.fetch_item_fields(bitwarden_secret.spec.item.to_owned());
             let attachments_result = bw_client.fetch_item_attachments(bitwarden_secret.spec.item.to_owned());
             if fields_result.is_ok() && attachments_result.is_ok() {
+                let secret_api: Api<Secret> = Api::namespaced(client.clone(), &namespace);
                 let string_secrets: BTreeMap<String, String> = fields_result.unwrap();
                 let secrets: BTreeMap<String, ByteString> = attachments_result.unwrap();
 
@@ -153,21 +158,29 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
                 let labels: BTreeMap<String, String> = bitwarden_secret.metadata.labels.clone().unwrap_or(BTreeMap::new());
                 let annotations: BTreeMap<String, String> = bitwarden_secret.metadata.annotations.clone().unwrap_or(BTreeMap::new());
 
-                let api: Api<Secret> = Api::namespaced(client.clone(), &namespace);
-                let existing_secret = api.get_opt(&name).await?;
+                let existing_secret = secret_api.get_opt(&name).await?;
                 if existing_secret.is_some() {
                     let secret = existing_secret.unwrap();
                     let mut owner_references: Vec<OwnerReference> = secret.metadata.owner_references.unwrap_or(vec![]);
                     owner_references.push(owner_ref);
-                    merge_secret(client, owner_references, &name, &namespace, &bitwarden_secret.spec.type_, string_secrets, secrets, labels, annotations).await?;
+                    merge_secret(secret_api, owner_references, &name, &namespace, &bitwarden_secret.spec.type_, string_secrets, secrets, labels, annotations).await?;
                 } else {
-                    create_secret(client, owner_ref, &name, &namespace, &bitwarden_secret.spec.type_, string_secrets, secrets, labels, annotations).await?;
+                    create_secret(secret_api, owner_ref, &name, &namespace, &bitwarden_secret.spec.type_, string_secrets, secrets, labels, annotations).await?;
                 }
+                set_status(&bitwarden_secret_api, &name, BitwardenSecretStatus {
+                    status: BitwardenSecretStatusX::Success,
+                    reason: "".to_string(),
+                });
             } else {
+                set_status(&bitwarden_secret_api, &name,  BitwardenSecretStatus {
+                    status: BitwardenSecretStatusX::Failed,
+                    reason: "".to_string(),
+                });
                 if fields_result.is_err() {
-                    error!("{}", fields_result.err().unwrap().to_string());
-                } else {
-                    error!("{}", attachments_result.err().unwrap().to_string());
+                    error(&bitwarden_secret_api, &name, fields_result.err().unwrap());
+                }
+                if attachments_result.is_err() {
+                    error(&bitwarden_secret_api, &name, attachments_result.err().unwrap());
                 }
                 bw_client.reset();
             }
@@ -180,6 +193,14 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
         }
         BitwardenSecretAction::NoOp => Ok(Action::requeue(Duration::from_secs(*&env::var(ENV_NOOP_REQUEUE_DELAY).map(|x| x.parse::<u64>().expect("NOOP_REQUEUE_DELAY should be u64")).unwrap_or(DEFAULT_NOOP_REQUEUE_DELAY)))),
     };
+}
+
+fn error(bitwarden_secret_api: &Api<BitwardenSecret>, name: &String, err: BitwardenCommandError) {
+    error!("{}", err.to_string());
+    set_status(&bitwarden_secret_api, &name,  BitwardenSecretStatus {
+        status: BitwardenSecretStatusX::Failed,
+        reason: err.to_string(),
+    });
 }
 
 fn determine_action(bitwarden_secret: &BitwardenSecret) -> BitwardenSecretAction {
@@ -208,6 +229,14 @@ pub async fn add_finalizer(client: Client, name: &str, namespace: &str) -> Resul
     Ok(api.patch(name, &PatchParams::default(), &patch).await?)
 }
 
+pub async fn set_status(bitwarden_secret_api: &Api<BitwardenSecret>, name: &str, status: BitwardenSecretStatus) -> Result<BitwardenSecret, Error> {
+    let status_json: Value = json!({
+        "status": status
+    });
+    let patch: Patch<&Value> = Patch::Merge(&status_json);
+    Ok(bitwarden_secret_api.patch(name, &PatchParams::default(), &patch).await?)
+}
+
 pub async fn delete_finalizer(client: Client, name: &str, namespace: &str) -> Result<(), Error> {
     let api: Api<BitwardenSecret> = Api::namespaced(client, namespace);
     let has_resource = api.get_opt(name).await?.is_some();
@@ -225,7 +254,7 @@ pub async fn delete_finalizer(client: Client, name: &str, namespace: &str) -> Re
 }
 
 pub async fn merge_secret(
-    client: Client,
+    secret_api: Api<Secret>,
     owner_references: Vec<OwnerReference>,
     name: &str,
     namespace: &str,
@@ -243,8 +272,6 @@ pub async fn merge_secret(
                 "stringData": string_secrets,
                 "data": secrets
             });
-    let secret_api: Api<Secret> = Api::namespaced(client, namespace);
-
     let patch: Patch<&Value> = Patch::Merge(&patch_json);
     secret_api.patch(name, &PatchParams::default(), &patch)
         .await
@@ -252,7 +279,7 @@ pub async fn merge_secret(
 
 /// TODO Note: It is assumed the resource does not already exists for simplicity. Returns an `Error` if it does.
 pub async fn create_secret(
-    client: Client,
+    secret_api: Api<Secret>,
     owner_ref: OwnerReference,
     name: &str,
     namespace: &str,
@@ -277,7 +304,6 @@ pub async fn create_secret(
         ..Secret::default()
     };
 
-    let secret_api: Api<Secret> = Api::namespaced(client, namespace);
     secret_api
         .create(&PostParams::default(), &secret)
         .await
