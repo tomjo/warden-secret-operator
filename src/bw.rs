@@ -51,21 +51,29 @@ impl BitwardenClientWrapper {
     }
 
     pub fn fetch_item_fields(&mut self, item: String) -> Result<BTreeMap<String, String>, BitwardenCommandError> {
-        if self.session_token.is_none() {
-            self.session_token = Some(self.login()?);
-            self.command_with_env(format!("bw sync"), self.create_session_env())?;
-        }
+        self.verify_session_token()?;
         let item_id: String = self.find_item_id(&item)?;
         return self.get_item_fields(&item_id);
     }
 
-    pub fn fetch_item_attachments(&mut self, item: String) -> Result<BTreeMap<String, ByteString>, BitwardenCommandError> {
+    fn verify_session_token(&mut self) -> Result<(), BitwardenCommandError>{
         if self.session_token.is_none() {
             self.session_token = Some(self.login()?);
-            self.command_with_env(format!("bw sync"), self.create_session_env())?;
+            self.sync()?;
         }
+        Ok(())
+    }
+
+    pub fn fetch_item_attachments(&mut self, item: String) -> Result<BTreeMap<String, ByteString>, BitwardenCommandError> {
+        self.verify_session_token()?;
         let item_id: String = self.find_item_id(&item)?;
         return self.get_item_attachments(&item_id);
+    }
+
+    pub fn sync(&mut self) -> Result<(), BitwardenCommandError> {
+        self.verify_session_token()?;
+        self.command_with_env(format!("bw sync"), self.create_session_env())?;
+        Ok(())
     }
 
     pub fn reset(&mut self) {

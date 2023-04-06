@@ -61,6 +61,25 @@ async fn main() {
     let bw_mutex = Mutex::new(bw_client);
     let context: Arc<ContextData> = Arc::new(ContextData::new(kubernetes_client.clone(), bw_mutex));
 
+    let c = context.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(300));
+
+        loop {
+            interval.tick().await;
+            info!("Retrieving bw lock for sync");
+            let mutex_guard_fut = c.bw_client.lock();
+            let mut bw_client: MutexGuard<BitwardenClientWrapper> = mutex_guard_fut.await;
+            info!("Syncing BitWarden vault");
+            let result = bw_client.sync();
+            if result.is_err() {
+                error!("Could not sync BitWarden vault: {}", result.err().unwrap());
+                bw_client.reset();
+            }
+            drop(bw_client);
+        }
+    });
+
     // The controller comes from the `kube_runtime` crate and manages the reconciliation process.
     // It requires the following information:
     // - `kube::Api<T>` this controller "owns". In this case, `T = BitwardenSecret`, as this controller owns the `BitwardenSecret` resource,
