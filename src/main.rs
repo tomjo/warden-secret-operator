@@ -150,7 +150,7 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
                     api_version: "tomjo.net/v1".to_string(),
                     kind: "BitwardenSecret".to_string(),
                     name: name.clone(),
-                    uid: bitwarden_secret.uid().expect("uid should always be set by serve"),
+                    uid: bitwarden_secret.uid().unwrap(),
                     block_owner_deletion: Some(true),
                     controller: None,
                 };
@@ -172,7 +172,7 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
                     reason: "".to_string(),
                 });
             } else {
-                set_status(&bitwarden_secret_api, &name,  BitwardenSecretStatus {
+                set_status(&bitwarden_secret_api, &name, BitwardenSecretStatus {
                     status: BitwardenSecretStatusX::Failed,
                     reason: "".to_string(),
                 });
@@ -197,7 +197,7 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
 
 fn error(bitwarden_secret_api: &Api<BitwardenSecret>, name: &String, err: BitwardenCommandError) {
     error!("{}", err.to_string());
-    set_status(&bitwarden_secret_api, &name,  BitwardenSecretStatus {
+    set_status(&bitwarden_secret_api, &name, BitwardenSecretStatus {
         status: BitwardenSecretStatusX::Failed,
         reason: err.to_string(),
     });
@@ -234,7 +234,7 @@ pub async fn set_status(bitwarden_secret_api: &Api<BitwardenSecret>, name: &str,
         "status": status
     });
     let patch: Patch<&Value> = Patch::Merge(&status_json);
-    Ok(bitwarden_secret_api.patch(name, &PatchParams::default(), &patch).await?)
+    Ok(bitwarden_secret_api.patch_status(name, &PatchParams::default(), &patch).await?)
 }
 
 pub async fn delete_finalizer(client: Client, name: &str, namespace: &str) -> Result<(), Error> {
