@@ -13,6 +13,7 @@ version = "v1",
 kind = "BitwardenSecret",
 plural = "bitwardensecrets",
 derive = "PartialEq",
+status = "BitwardenSecretStatus",
 namespaced
 )]
 pub struct BitwardenSecretSpec {
@@ -21,14 +22,14 @@ pub struct BitwardenSecretSpec {
     pub item: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
+#[derive(Serialize, Deserialize, Clone, Debug, JsonSchema, PartialEq)]
 pub enum BitwardenSecretStatusX {
     Success,
     Failed,
     Progressing,
 }
 
-#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize)]
+#[derive(Clone, Debug, Deserialize, JsonSchema, Serialize, PartialEq)]
 pub struct BitwardenSecretStatus {
     pub status: BitwardenSecretStatusX,
     pub reason: String,

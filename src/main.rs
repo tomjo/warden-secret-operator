@@ -234,7 +234,13 @@ pub async fn set_status(bitwarden_secret_api: &Api<BitwardenSecret>, name: &str,
     //     "status": status
     // });
     // let patch: Patch<&Value> = Patch::Merge(&status_json);
-    Ok(bitwarden_secret_api.replace_status(name, &PostParams::default(), serde_json::to_vec(&status)?).await?)
+    // bitwarden_secret_api.replace_status(name, &Default::default(), serde_json::to_vec(&status)?).await?;
+
+    let mut o = bitwarden_secret_api.get_status(name).await?; // retrieve partial object
+    o.status = Some(status); // update the job part
+    let pp = PostParams::default();
+    let o = bitwarden_secret_api.replace_status(name, &pp, serde_json::to_vec(&o)?).await?;
+    Ok(o)
 }
 
 pub async fn delete_finalizer(client: Client, name: &str, namespace: &str) -> Result<(), Error> {
