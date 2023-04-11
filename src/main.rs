@@ -230,16 +230,14 @@ pub async fn add_finalizer(client: Client, name: &str, namespace: &str) -> Resul
 }
 
 pub async fn set_status(bitwarden_secret_api: &Api<BitwardenSecret>, name: &str, status: BitwardenSecretStatus) -> Result<BitwardenSecret, Error> {
-    // let status_json: Value = json!({
-    //     "status": status
-    // });
-    // let patch: Patch<&Value> = Patch::Merge(&status_json);
-    // bitwarden_secret_api.replace_status(name, &Default::default(), serde_json::to_vec(&status)?).await?;
-
-    let mut o = bitwarden_secret_api.get_status(name).await?; // retrieve partial object
-    o.status = Some(status); // update the job part
-    let pp = PostParams::default();
-    let o = bitwarden_secret_api.replace_status(name, &pp, serde_json::to_vec(&o)?).await?;
+    let status_json: Value = json!({
+        "apiVersion": "tomjo.net/v1",
+        "kind": "BitwardenSecret",
+        "status": status
+    });
+    let patch: Patch<&Value> = Patch::Apply(&status_json);
+    let pp = PatchParams::default();
+    let o = bitwarden_secret_api.patch_status(name, &pp, &status).await?;
     Ok(o)
 }
 
