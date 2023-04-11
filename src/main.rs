@@ -237,7 +237,7 @@ pub async fn set_status(bitwarden_secret_api: &Api<BitwardenSecret>, name: &str,
         "status": status
     });
     let patch: Patch<&Value> = Patch::Apply(&status_json);
-    let pp = PatchParams::default();
+    let pp = PatchParams::apply("bitwarden-operator").force();
     let o = bitwarden_secret_api.patch_status(name, &pp, &patch).await?;
     Ok(o)
 }
