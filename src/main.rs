@@ -133,7 +133,7 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
             set_status(&bitwarden_secret_api, &name, BitwardenSecretStatus {
                 status: BitwardenSecretStatusX::Progressing,
                 reason: "".to_string(),
-            });
+            }).await?;
             add_finalizer(client.clone(), &name, &namespace).await?;
 
             let mutex_guard_fut = context.bw_client.lock();
@@ -170,17 +170,17 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
                 set_status(&bitwarden_secret_api, &name, BitwardenSecretStatus {
                     status: BitwardenSecretStatusX::Success,
                     reason: "".to_string(),
-                });
+                }).await?;
             } else {
                 set_status(&bitwarden_secret_api, &name, BitwardenSecretStatus {
                     status: BitwardenSecretStatusX::Failed,
                     reason: "".to_string(),
-                });
+                }).await?;
                 if fields_result.is_err() {
-                    error(&bitwarden_secret_api, &name, fields_result.err().unwrap());
+                    error(&bitwarden_secret_api, &name, fields_result.err().unwrap()).await?;
                 }
                 if attachments_result.is_err() {
-                    error(&bitwarden_secret_api, &name, attachments_result.err().unwrap());
+                    error(&bitwarden_secret_api, &name, attachments_result.err().unwrap()).await?;
                 }
                 bw_client.reset();
             }
@@ -195,12 +195,13 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
     };
 }
 
-fn error(bitwarden_secret_api: &Api<BitwardenSecret>, name: &String, err: BitwardenCommandError) {
+async fn error(bitwarden_secret_api: &Api<BitwardenSecret>, name: &String, err: BitwardenCommandError) -> Result<(), Error> {
     error!("{}", err.to_string());
     set_status(&bitwarden_secret_api, &name, BitwardenSecretStatus {
         status: BitwardenSecretStatusX::Failed,
         reason: err.to_string(),
-    });
+    }).await?;
+    Ok(())
 }
 
 fn determine_action(bitwarden_secret: &BitwardenSecret) -> BitwardenSecretAction {
@@ -237,7 +238,7 @@ pub async fn set_status(bitwarden_secret_api: &Api<BitwardenSecret>, name: &str,
     });
     let patch: Patch<&Value> = Patch::Apply(&status_json);
     let pp = PatchParams::default();
-    let o = bitwarden_secret_api.patch_status(name, &pp, &status).await?;
+    let o = bitwarden_secret_api.patch_status(name, &pp, &patch).await?;
     Ok(o)
 }
 
