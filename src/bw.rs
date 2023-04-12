@@ -1,12 +1,10 @@
 extern crate secstr;
 
 use std::collections::btree_map::BTreeMap;
-use std::fs::File;
 use std::{fs, io};
-use std::io::Read;
 use std::process::{Command, Output};
 use std::string::FromUtf8Error;
-use tempfile::{NamedTempFile, tempfile};
+use tempfile::{NamedTempFile};
 
 use config::Config;
 use k8s_openapi::ByteString;
@@ -97,7 +95,7 @@ impl BitwardenClientWrapper {
         let attachments_with_ids: Vec<Attachment> = serde_json::from_str(&json_attachments)?;
         for attachment in attachments_with_ids {
 
-            let mut attachment_file: NamedTempFile = NamedTempFile::new()?;
+            let attachment_file: NamedTempFile = NamedTempFile::new()?;
             let attachment_file_path: &str = attachment_file.path().to_str().unwrap();
             let attachment_id = attachment.id;
             self.command_with_env(format!("bw get attachment '{attachment_id}' --itemid '{item_id}' --output {attachment_file_path} --quiet"), self.create_session_env())?;

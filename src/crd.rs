@@ -1,5 +1,4 @@
-use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceSubresourceStatus;
-use kube::{CustomResource, CustomResourceExt};
+use kube::{CustomResource};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -22,16 +21,87 @@ pub struct BitwardenSecretSpec {
     pub item: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, JsonSchema, PartialEq)]
-pub enum BitwardenSecretStatusX {
-    Success,
-    Failed,
-    Progressing,
-}
-
 #[derive(Clone, Debug, Deserialize, JsonSchema, Serialize, PartialEq)]
 pub struct BitwardenSecretStatus {
-    pub status: BitwardenSecretStatusX,
-    pub reason: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub conditions: Vec<ApplyCondition>,
+    pub phase: ApplyPhase,
+    pub start_time: String,
 }
 
+/// ApplyCondition
+///
+/// Meant to act like normal kubernetes conditions like PodCondition:
+///
+///  - lastProbeTime: null
+///    lastTransitionTime: "2019-07-31T13:07:30Z"
+///    message: 'containers with unready status: [product-config]'
+///    reason: ContainersNotReady
+///    status: "False"
+///    type: ContainersReady
+///
+/// We do not post lastProbeTime / lastHeartbeatTime because they are expensive.
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct ApplyCondition {
+    /// Whether or not in a good state
+    ///
+    /// This must default to true when in a good state
+    pub status: bool,
+    /// Error reason type if not in a good state
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    /// One sentence error message if not in a good state
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+
+    /// The type of condition we export
+    ///
+    /// This is an extensible enum. Conditions we don't know about gets thrown away.
+    #[serde(rename = "type")]
+    pub type_: ConditionType,
+
+    /// When the condition was last written in a RFC 3339 format
+    ///
+    /// Format == `1996-12-19T16:39:57-08:00`, but we hardcode Utc herein.
+    #[serde(rename = "lastTransitionTime")]
+    pub last_transition: String
+}
+
+/// Allowed condition types we always export all of.
+///
+/// This does not describe a state machine. We set conditions as they happen.
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
+pub enum ConditionType {
+    Ready,
+
+    /// Cach all event that we don't emit (forwards compat on api side)
+    #[serde(other, skip_serializing)]
+    Unknown
+}
+
+/// A high-level summary of where the service is in its lifecycle.
+///
+/// It is not intended to be a comprehensive rollup of state, nor intended to be
+/// a comprehensive state machine.
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
+pub enum ApplyPhase {
+    /// The service started the apply process and has passed manifest validation
+    Pending,
+    /// The service configuration has been sent to kubernetes without errors.
+    Running,
+    /// The applied configuration has rolled out in all resources.
+    Succeeded,
+    /// The rollout did not complete successfully
+    Failed,
+
+    /// Cach all event that we don't emit (forwards compat on api side)
+    #[serde(other, skip_serializing)]
+    Unknown
+}
+
+
+impl Default for ConditionType {
+    fn default() -> Self {
+        ConditionType::Unknown
+    }
+}
