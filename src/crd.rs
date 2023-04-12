@@ -25,8 +25,8 @@ pub struct BitwardenSecretSpec {
 pub struct BitwardenSecretStatus {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub conditions: Vec<ApplyCondition>,
-    pub phase: ApplyPhase,
-    pub start_time: String,
+    pub phase: Option<ApplyPhase>,
+    pub start_time: Option<String>,
 }
 
 /// ApplyCondition

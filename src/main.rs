@@ -132,12 +132,12 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
             let bitwarden_secret_api: Api<BitwardenSecret> = Api::namespaced(client.clone(), &namespace);
             let mut initial_status = BitwardenSecretStatus {
                 conditions: vec![],
-                phase: ApplyPhase::Pending,
-                start_time: Utc::now().to_rfc3339(),
+                phase: Some(ApplyPhase::Pending),
+                start_time: Some(Utc::now().to_rfc3339()),
             };
             patch_status(&bitwarden_secret_api, &name, &initial_status).await?;
             add_finalizer(client.clone(), &name, &namespace).await?;
-            initial_status.phase = ApplyPhase::Running;
+            initial_status.phase = Some(ApplyPhase::Running);
             patch_status(&bitwarden_secret_api, &name, &initial_status).await?;
             let mutex_guard_fut = context.bw_client.lock();
             let mut bw_client: MutexGuard<BitwardenClientWrapper> = mutex_guard_fut.await;
@@ -170,10 +170,10 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
                 } else {
                     create_secret(secret_api, owner_ref, &name, &namespace, &bitwarden_secret.spec.type_, string_secrets, secrets, labels, annotations).await?;
                 }
-                initial_status.phase = ApplyPhase::Succeeded;
+                initial_status.phase = Some(ApplyPhase::Succeeded);
                 update_status(&bitwarden_secret_api, &name, initial_status, None).await?;
             } else {
-                initial_status.phase = ApplyPhase::Failed;
+                initial_status.phase = Some(ApplyPhase::Failed);
                 patch_status(&bitwarden_secret_api, &name, &initial_status).await?;
 
                 if fields_result.is_err() {
