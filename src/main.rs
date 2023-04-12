@@ -301,8 +301,8 @@ pub async fn merge_secret(
                 "metadata": {
                     "finalizers": ["bitwardensecrets.tomjo.net/finalizer.secret"],
                     "ownerReferences": owner_references,
-                    // "annotations": annotations,
-                    // "labels" : labels,
+                    "annotations": annotations,
+                    "labels" : labels,
                 },
                 "stringData": string_secrets,
                 "data": secrets,
