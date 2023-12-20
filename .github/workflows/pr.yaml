@@ -1,0 +1,29 @@
+name: PR
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: write
+  pull-requests: write
+  packages: write
+  id-token: write
+
+jobs:
+  determine_version:
+    uses: ./.github/workflows/determine_version.yaml
+  build:
+    needs: determine_version
+    uses: ./.github/workflows/build.yaml
+    with:
+      version: ${{ needs.determine_version.outputs.version }}
