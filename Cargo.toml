@@ -28,7 +28,7 @@ schemars = "0.8"
 thiserror = "1"    # Custom Error definitions and convenient error mappings
 config = "0.13"
 secstr = "0.5.1"
-const_format = "0.2.30"
+const_format = "0.2.32"
 shell-escape = "0.1.5"
 tempfile = "3.4"
 warp = { version = "0.3", features = ["tls"]}
