@@ -17,7 +17,7 @@ kube = { version = "0.84.0", default-features = true, features = [
     "derive",
     "runtime",
 ] } # Library for talking to Kubernetes API
-k8s-openapi = { version = "0.18", default-features = false, features = [
+k8s-openapi = { version = "0.20", default-features = false, features = [
     "v1_25",
 ] } # Kube-rs depends on k8s-openapi
 futures = "0.3"
