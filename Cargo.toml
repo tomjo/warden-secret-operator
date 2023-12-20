@@ -7,6 +7,31 @@ edition = "2021"
 
 [dependencies]
 log = "0.4.17"
-env_logger = "0.9.0"
+env_logger = "0.10.0"
+
+tokio = { version = "1.0", features = [
+    "macros",
+    "rt-multi-thread",
+] } # Macros for easy project setup and testing, multi-threaded runtime for best utilization of resources
+kube = { version = "0.84.0", default-features = true, features = [
+    "derive",
+    "runtime",
+] } # Library for talking to Kubernetes API
+k8s-openapi = { version = "0.18", default-features = false, features = [
+    "v1_25",
+] } # Kube-rs depends on k8s-openapi
+futures = "0.3"
+# All serde dependencies are used to serialize/deserialize CRDs and other Kubernetes-related structs
+serde = { version = "1", features = ["derive"]}
+serde_json = "1.0"
+schemars = "0.8"
+thiserror = "1"    # Custom Error definitions and convenient error mappings
+config = "0.13"
+secstr = "0.5.1"
+const_format = "0.2.30"
+shell-escape = "0.1.5"
+tempfile = "3.4"
+warp = { version = "0.3", features = ["tls"]}
+tracing-subscriber = "0.3"
 
 [dev-dependencies]
