@@ -43,7 +43,7 @@ Configuration can be applied using a `configuration file`  or via `environment v
 
 Supports any format https://crates.io/crates/config supports (as of writing: **JSON, TOML, YAML, INI, RON, JSON5**)
 
-It should be named `config` appended with one of the supported extensions (e.g. config.toml)
+It should be named `config` appended with one of the supported extensions (e.g. **config.toml**)
 
 It should be placed in `config/`, this default path is overrideable with the environment variable `BW_OPERATOR_CONFIG`.
 
@@ -60,13 +60,13 @@ where the key is in uppercase and words are separated by underscores.
 
 #### Options
 
-* **bw_path** - path to the bitwarden CLI executable | Default: `/usr/bin/bw`
-* **url** - url to bitwarden/vaultwarden instance | Default: `https://vault.bitwarden.com`
+* **bw_path** - path to the bitwarden CLI executable | **Default:** `/usr/bin/bw`
+* **url** - url to bitwarden/vaultwarden instance | **Default:** `https://vault.bitwarden.com`
 * **organization** - bitwarden organization uuid
 * **user** - bitwarden user
 * **pass** - bitwarden password
-* **webserver_ip** - IP for the webserver to listen on that currently only serves the conversion webhook | Default: `0.0.0.0`
-* **webserver_port** - Port for the webserver | Default: `8080`
-* **webserver_tls** - enables TLS for the webserver that currently only serves the conversion webhook | Default: `false`
-* **tls_cert_path** - path to the certificate used when TLS is enabled | Default: `/certs/tls.crt`
-* **tls_key_path** - path to the certificate key used when TLS is enabled | Default: `/certs/tls.key`
+* **webserver_ip** - IP for the webserver to listen on that currently only serves the conversion webhook | **Default:** `0.0.0.0`
+* **webserver_port** - Port for the webserver | **Default:** `8080`
+* **webserver_tls** - enables TLS for the webserver that currently only serves the conversion webhook | **Default:** `false`
+* **tls_cert_path** - path to the certificate used when TLS is enabled | **Default:** `/certs/tls.crt`
+* **tls_key_path** - path to the certificate key used when TLS is enabled | **Default:** `/certs/tls.key`
