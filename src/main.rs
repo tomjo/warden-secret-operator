@@ -14,29 +14,35 @@ use const_format::formatcp;
 use futures::stream::StreamExt;
 use k8s_openapi::api::core::v1::Secret;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ObjectMeta, OwnerReference};
-use k8s_openapi::ByteString;
 use k8s_openapi::chrono::Utc;
-use kube::{Api, client::Client, Error as KubeError, runtime::Controller, runtime::controller::Action};
+use k8s_openapi::ByteString;
 use kube::api::{DeleteParams, Patch, PatchParams, PostParams};
+use kube::runtime::watcher::Config as WatcherConfig;
 use kube::Resource;
 use kube::ResourceExt;
+use kube::{
+    client::Client, runtime::controller::Action, runtime::Controller, Api, Error as KubeError,
+};
+use schemars::_private::NoSerialize;
 use serde_json::{json, Value};
 use tokio::sync::{Mutex, MutexGuard};
 use tokio::time::Duration;
 use warp::Filter;
-use kube::runtime::watcher::Config as WatcherConfig;
-use schemars::_private::NoSerialize;
 
 use crate::bw::{BitwardenClientWrapper, BitwardenCommandError};
-use crate::crd::{BitwardenSecret, BitwardenSecretStatus, ApplyCondition, ConditionStatus, ConditionType, get_api_version, get_kind};
+use crate::crd::{
+    get_api_version, get_kind, ApplyCondition, BitwardenSecret, BitwardenSecretStatus,
+    ConditionStatus, ConditionType,
+};
 
-mod crd;
 mod bw;
 mod conversion;
+mod crd;
 
 const BW_OPERATOR_ENV_PREFIX: &'static str = "BW_OPERATOR";
 const ENV_CONFIG_PATH: &'static str = formatcp!("{}_CONFIG", BW_OPERATOR_ENV_PREFIX);
-const ENV_NOOP_REQUEUE_DELAY: &'static str = formatcp!("{}_NOOP_REQUEUE_DELAY", BW_OPERATOR_ENV_PREFIX);
+const ENV_NOOP_REQUEUE_DELAY: &'static str =
+    formatcp!("{}_NOOP_REQUEUE_DELAY", BW_OPERATOR_ENV_PREFIX);
 const ENV_TLS_CERT_PATH: &'static str = formatcp!("{}_TLS_CERT_PATH", BW_OPERATOR_ENV_PREFIX);
 const ENV_TLS_KEY_PATH: &'static str = formatcp!("{}_TLS_KEY_PATH", BW_OPERATOR_ENV_PREFIX);
 const DEFAULT_CONFIG_PATH: &'static str = "config/config";
@@ -53,7 +59,9 @@ async fn main() {
     tracing_subscriber::fmt::init();
 
     let config: Config = Config::builder()
-        .add_source(config::File::with_name(&env::var(ENV_CONFIG_PATH).unwrap_or(DEFAULT_CONFIG_PATH.to_owned())))
+        .add_source(config::File::with_name(
+            &env::var(ENV_CONFIG_PATH).unwrap_or(DEFAULT_CONFIG_PATH.to_owned()),
+        ))
         .add_source(config::Environment::with_prefix(BW_OPERATOR_ENV_PREFIX))
         .build()
         .expect("Could not initialize config");
@@ -83,7 +91,10 @@ async fn main() {
         .for_each(|reconciliation_result| async move {
             match reconciliation_result {
                 Ok(bitwarden_secret_resource) => {
-                    trace!("Reconciliation successful. Resource: {:?}", bitwarden_secret_resource);
+                    trace!(
+                        "Reconciliation successful. Resource: {:?}",
+                        bitwarden_secret_resource
+                    );
                 }
                 Err(reconciliation_err) => {
                     error!("Reconciliation error: {:?}", reconciliation_err)
@@ -119,7 +130,9 @@ fn setup_webserver(config: &Config) {
         .with(warp::trace::named("crdconvert"));
 
     let port: u16 = config.get_int("webserver_port").unwrap_or(8080) as u16;
-    let ip: [u8; 4] = config.get_string("webserver_ip").unwrap_or("0.0.0.0".to_string())
+    let ip: [u8; 4] = config
+        .get_string("webserver_ip")
+        .unwrap_or("0.0.0.0".to_string())
         .split(".")
         .map(|x| x.parse::<u8>().unwrap())
         .collect::<Vec<u8>>()
@@ -129,15 +142,25 @@ fn setup_webserver(config: &Config) {
     let server_config = warp::serve(warp::post().and(routes));
 
     if config.get_bool("webserver_tls").unwrap_or(false) {
-        tokio::spawn(server_config.tls()
-            .cert_path(config.get_string("tls_cert_path").unwrap_or(DEFAULT_TLS_CERT_PATH.to_owned()))
-            .key_path(config.get_string("tls_key_path").unwrap_or(DEFAULT_TLS_KEY_PATH.to_owned()))
-            .run((ip, port)));
+        tokio::spawn(
+            server_config
+                .tls()
+                .cert_path(
+                    config
+                        .get_string("tls_cert_path")
+                        .unwrap_or(DEFAULT_TLS_CERT_PATH.to_owned()),
+                )
+                .key_path(
+                    config
+                        .get_string("tls_key_path")
+                        .unwrap_or(DEFAULT_TLS_KEY_PATH.to_owned()),
+                )
+                .run((ip, port)),
+        );
     } else {
         tokio::spawn(server_config.run((ip, port)));
     }
 }
-
 
 struct ContextData {
     client: Client,
@@ -157,7 +180,10 @@ enum BitwardenSecretAction {
     NoOp,
 }
 
-async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextData>) -> Result<Action, Error> {
+async fn reconcile(
+    bitwarden_secret: Arc<BitwardenSecret>,
+    context: Arc<ContextData>,
+) -> Result<Action, Error> {
     let client: Client = context.client.clone();
 
     let namespace: String = match bitwarden_secret.namespace() {
@@ -170,7 +196,8 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
     return match determine_action(&bitwarden_secret) {
         BitwardenSecretAction::Create => {
             debug!("Creating BitwardenSecret: {}", name);
-            let bitwarden_secret_api: Api<BitwardenSecret> = Api::namespaced(client.clone(), &namespace);
+            let bitwarden_secret_api: Api<BitwardenSecret> =
+                Api::namespaced(client.clone(), &namespace);
             let mut initial_status = BitwardenSecretStatus {
                 start_time: Some(Utc::now().to_rfc3339()),
                 conditions: vec![ApplyCondition {
@@ -199,7 +226,8 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
             let mut bw_client: MutexGuard<BitwardenClientWrapper> = mutex_guard_fut.await;
 
             let fields_result = bw_client.fetch_item_fields(bitwarden_secret.spec.item.to_owned());
-            let attachments_result = bw_client.fetch_item_attachments(bitwarden_secret.spec.item.to_owned());
+            let attachments_result =
+                bw_client.fetch_item_attachments(bitwarden_secret.spec.item.to_owned());
             if fields_result.is_ok() && attachments_result.is_ok() {
                 let secret_api: Api<Secret> = Api::namespaced(client.clone(), &namespace);
                 let string_secrets: BTreeMap<String, String> = fields_result.unwrap();
@@ -207,17 +235,47 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
 
                 let owner_ref = create_owner_ref_for(&bitwarden_secret)?;
 
-                let labels: BTreeMap<String, String> = bitwarden_secret.metadata.labels.clone().unwrap_or(BTreeMap::new());
-                let annotations: BTreeMap<String, String> = bitwarden_secret.metadata.annotations.clone().unwrap_or(BTreeMap::new());
+                let labels: BTreeMap<String, String> = bitwarden_secret
+                    .metadata
+                    .labels
+                    .clone()
+                    .unwrap_or(BTreeMap::new());
+                let annotations: BTreeMap<String, String> = bitwarden_secret
+                    .metadata
+                    .annotations
+                    .clone()
+                    .unwrap_or(BTreeMap::new());
 
                 let existing_secret = secret_api.get_opt(&name).await?;
                 if existing_secret.is_some() {
                     let secret = existing_secret.unwrap();
-                    let mut owner_references: Vec<OwnerReference> = secret.metadata.owner_references.unwrap_or(vec![]);
+                    let mut owner_references: Vec<OwnerReference> =
+                        secret.metadata.owner_references.unwrap_or(vec![]);
                     add_or_update_owner_ref(&mut owner_references, owner_ref);
-                    merge_secret(secret_api, owner_references, &name, &bitwarden_secret.spec.type_, string_secrets, secrets, labels, annotations).await?;
+                    merge_secret(
+                        secret_api,
+                        owner_references,
+                        &name,
+                        &bitwarden_secret.spec.type_,
+                        string_secrets,
+                        secrets,
+                        labels,
+                        annotations,
+                    )
+                    .await?;
                 } else {
-                    create_secret(secret_api, owner_ref, &name, &namespace, &bitwarden_secret.spec.type_, string_secrets, secrets, labels, annotations).await?;
+                    create_secret(
+                        secret_api,
+                        owner_ref,
+                        &name,
+                        &namespace,
+                        &bitwarden_secret.spec.type_,
+                        string_secrets,
+                        secrets,
+                        labels,
+                        annotations,
+                    )
+                    .await?;
                 }
                 update_status(&bitwarden_secret_api, &name, initial_status, None).await?;
             } else {
@@ -236,9 +294,21 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
                 patch_status(&bitwarden_secret_api, &name, &initial_status).await?;
 
                 if fields_result.is_err() {
-                    error(&bitwarden_secret_api, &name, initial_status, fields_result.err().unwrap()).await?;
+                    error(
+                        &bitwarden_secret_api,
+                        &name,
+                        initial_status,
+                        fields_result.err().unwrap(),
+                    )
+                    .await?;
                 } else if attachments_result.is_err() {
-                    error(&bitwarden_secret_api, &name, initial_status, attachments_result.err().unwrap()).await?;
+                    error(
+                        &bitwarden_secret_api,
+                        &name,
+                        initial_status,
+                        attachments_result.err().unwrap(),
+                    )
+                    .await?;
                 }
                 bw_client.reset();
             }
@@ -309,7 +379,7 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
                         labels,
                         annotations,
                     )
-                        .await?;
+                    .await?;
                 } else {
                     create_secret(
                         secret_api,
@@ -322,7 +392,7 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
                         labels,
                         annotations,
                     )
-                        .await?;
+                    .await?;
                 }
                 update_status(&bitwarden_secret_api, &name, status, None).await?;
             } else {
@@ -347,7 +417,7 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
                         status,
                         fields_result.err().unwrap(),
                     )
-                        .await?;
+                    .await?;
                 } else if attachments_result.is_err() {
                     error(
                         &bitwarden_secret_api,
@@ -355,7 +425,7 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
                         status,
                         attachments_result.err().unwrap(),
                     )
-                        .await?;
+                    .await?;
                 }
                 bw_client.reset();
             }
@@ -367,7 +437,14 @@ async fn reconcile(bitwarden_secret: Arc<BitwardenSecret>, context: Arc<ContextD
             delete_finalizer(client, &name, &namespace).await?;
             Ok(Action::await_change())
         }
-        BitwardenSecretAction::NoOp => Ok(Action::requeue(Duration::from_secs(env::var(ENV_NOOP_REQUEUE_DELAY).map(|x| x.parse::<u64>().expect("NOOP_REQUEUE_DELAY should be u64 parseable")).unwrap_or(DEFAULT_NOOP_REQUEUE_DELAY)))),
+        BitwardenSecretAction::NoOp => Ok(Action::requeue(Duration::from_secs(
+            env::var(ENV_NOOP_REQUEUE_DELAY)
+                .map(|x| {
+                    x.parse::<u64>()
+                        .expect("NOOP_REQUEUE_DELAY should be u64 parseable")
+                })
+                .unwrap_or(DEFAULT_NOOP_REQUEUE_DELAY),
+        ))),
     };
 }
 
@@ -386,13 +463,22 @@ fn create_owner_ref_for(bitwarden_secret: &Arc<BitwardenSecret>) -> Result<Owner
     Ok(OwnerReference {
         api_version: bitwarden_secret_object_ref.api_version.unwrap(),
         kind: bitwarden_secret_object_ref.kind.unwrap(),
-        name: bitwarden_secret.metadata.name.clone().ok_or(Error::UserInputError(format!("BitwardenSecret without name, uid: {}", bitwarden_secret.uid().unwrap()).to_string()))?,
+        name: bitwarden_secret
+            .metadata
+            .name
+            .clone()
+            .ok_or(Error::UserInputError(
+                format!(
+                    "BitwardenSecret without name, uid: {}",
+                    bitwarden_secret.uid().unwrap()
+                )
+                .to_string(),
+            ))?,
         uid: bitwarden_secret.uid().unwrap(),
         block_owner_deletion: Some(true),
         controller: None,
     })
 }
-
 
 fn update_ready_condition(
     mut status: BitwardenSecretStatus,
@@ -411,7 +497,12 @@ fn update_ready_condition(
     return status;
 }
 
-async fn error(bitwarden_secret_api: &Api<BitwardenSecret>, name: &String, status: BitwardenSecretStatus, err: BitwardenCommandError) -> Result<(), Error> {
+async fn error(
+    bitwarden_secret_api: &Api<BitwardenSecret>,
+    name: &String,
+    status: BitwardenSecretStatus,
+    err: BitwardenCommandError,
+) -> Result<(), Error> {
     error!("{}", err.to_string());
     update_status(&bitwarden_secret_api, &name, status, Some(err)).await?;
     Ok(())
@@ -424,7 +515,8 @@ fn determine_action(bitwarden_secret: &BitwardenSecret) -> BitwardenSecretAction
         .meta()
         .finalizers
         .as_ref()
-        .map_or(true, |finalizers| finalizers.is_empty()) {
+        .map_or(true, |finalizers| finalizers.is_empty())
+    {
         BitwardenSecretAction::Create
     } else if bitwarden_secret.metadata.generation != bitwarden_secret.get_observed_generation() {
         BitwardenSecretAction::Update
@@ -433,7 +525,10 @@ fn determine_action(bitwarden_secret: &BitwardenSecret) -> BitwardenSecretAction
     };
 }
 
-pub async fn add_finalizer(api: &Api<BitwardenSecret>, name: &str) -> Result<BitwardenSecret, Error> {
+pub async fn add_finalizer(
+    api: &Api<BitwardenSecret>,
+    name: &str,
+) -> Result<BitwardenSecret, Error> {
     let finalizer: Value = json!({
         "metadata": {
             "finalizers": ["bitwardensecrets.tomjo.net/finalizer.secret"]
@@ -444,7 +539,11 @@ pub async fn add_finalizer(api: &Api<BitwardenSecret>, name: &str) -> Result<Bit
     Ok(api.patch(name, &PatchParams::default(), &patch).await?)
 }
 
-pub async fn patch_status(bitwarden_secret_api: &Api<BitwardenSecret>, name: &str, status: &BitwardenSecretStatus) -> Result<BitwardenSecret, Error> {
+pub async fn patch_status(
+    bitwarden_secret_api: &Api<BitwardenSecret>,
+    name: &str,
+    status: &BitwardenSecretStatus,
+) -> Result<BitwardenSecret, Error> {
     let status_json: Value = json!({
         "apiVersion": get_api_version(),
         "kind": get_kind(),
@@ -456,8 +555,12 @@ pub async fn patch_status(bitwarden_secret_api: &Api<BitwardenSecret>, name: &st
     Ok(o)
 }
 
-
-pub async fn update_status(bitwarden_secret_api: &Api<BitwardenSecret>, name: &str, mut status: BitwardenSecretStatus, error: Option<BitwardenCommandError>) -> Result<BitwardenSecret, Error> {
+pub async fn update_status(
+    bitwarden_secret_api: &Api<BitwardenSecret>,
+    name: &str,
+    mut status: BitwardenSecretStatus,
+    error: Option<BitwardenCommandError>,
+) -> Result<BitwardenSecret, Error> {
     for (pos, condition) in status.conditions.iter().enumerate() {
         if condition.type_ == ConditionType::Ready {
             let mut copy = condition.clone();
@@ -524,17 +627,18 @@ pub async fn merge_secret(
     annotations: BTreeMap<String, String>,
 ) -> Result<Secret, KubeError> {
     let patch_json: Value = json!({
-                "metadata": {
-                    "ownerReferences": owner_references,
-                    // "annotations": annotations,
-                    // "labels" : labels,
-                },
-                "stringData": string_secrets,
-                "data": secrets,
-                "type": type_.to_owned(),
-            });
+        "metadata": {
+            "ownerReferences": owner_references,
+            // "annotations": annotations,
+            // "labels" : labels,
+        },
+        "stringData": string_secrets,
+        "data": secrets,
+        "type": type_.to_owned(),
+    });
     let patch: Patch<&Value> = Patch::Merge(&patch_json);
-    secret_api.patch(name, &PatchParams::default(), &patch)
+    secret_api
+        .patch(name, &PatchParams::default(), &patch)
         .await
 }
 
@@ -564,9 +668,7 @@ pub async fn create_secret(
         ..Secret::default()
     };
 
-    secret_api
-        .create(&PostParams::default(), &secret)
-        .await
+    secret_api.create(&PostParams::default(), &secret).await
 }
 
 pub async fn delete_secret(client: Client, name: &str, namespace: &str) -> Result<(), Error> {
@@ -578,8 +680,15 @@ pub async fn delete_secret(client: Client, name: &str, namespace: &str) -> Resul
     Ok(())
 }
 
-fn on_error(bitwarden_secret: Arc<BitwardenSecret>, error: &Error, _context: Arc<ContextData>) -> Action {
-    error!("Reconciliation error:\n{:?}.\n{:?}", error, bitwarden_secret);
+fn on_error(
+    bitwarden_secret: Arc<BitwardenSecret>,
+    error: &Error,
+    _context: Arc<ContextData>,
+) -> Action {
+    error!(
+        "Reconciliation error:\n{:?}.\n{:?}",
+        error, bitwarden_secret
+    );
     Action::requeue(Duration::from_secs(5))
 }
 

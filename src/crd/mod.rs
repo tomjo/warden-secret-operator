@@ -2,7 +2,8 @@ pub mod v1;
 pub mod v2;
 
 pub use self::v2::{
-    BitwardenSecret, BitwardenSecretSpec, BitwardenSecretStatus, ApplyCondition, ConditionStatus, ConditionType, get_api_version
+    get_api_version, ApplyCondition, BitwardenSecret, BitwardenSecretSpec, BitwardenSecretStatus,
+    ConditionStatus, ConditionType,
 };
 
 pub fn get_kind() -> &'static str {

@@ -1,10 +1,10 @@
 extern crate secstr;
 
 use std::collections::btree_map::BTreeMap;
-use std::{fs, io};
 use std::process::{Command, Output};
 use std::string::FromUtf8Error;
-use tempfile::{NamedTempFile};
+use std::{fs, io};
+use tempfile::NamedTempFile;
 
 use config::Config;
 use k8s_openapi::ByteString;
@@ -28,14 +28,36 @@ impl BitwardenClientWrapper {
     #[must_use]
     pub fn new(config: &Config) -> Self {
         let bw = BitwardenClientWrapper {
-            bw_path: config.get_string("bw_path").unwrap_or("/usr/bin/bw".to_owned()),
-            url: config.get_string("url").unwrap_or(DEFAULT_INSTANCE_URL.to_owned()),
-            user: SecStr::from(config.get_string("user").expect("Bitwarden user not configured.").as_str()),
-            password: SecStr::from(config.get_string("pass").expect("Bitwarden password not configured.").as_str()),
+            bw_path: config
+                .get_string("bw_path")
+                .unwrap_or("/usr/bin/bw".to_owned()),
+            url: config
+                .get_string("url")
+                .unwrap_or(DEFAULT_INSTANCE_URL.to_owned()),
+            user: SecStr::from(
+                config
+                    .get_string("user")
+                    .expect("Bitwarden user not configured.")
+                    .as_str(),
+            ),
+            password: SecStr::from(
+                config
+                    .get_string("pass")
+                    .expect("Bitwarden password not configured.")
+                    .as_str(),
+            ),
             organization: config.get_string("organization").ok(),
             session_token: None,
         };
-        bw.bw_command_with_env(vec!["config".to_string(), "server".to_string(), bw.url.to_string()], BTreeMap::new()).expect("Could not configure bitwarden server");
+        bw.bw_command_with_env(
+            vec![
+                "config".to_string(),
+                "server".to_string(),
+                bw.url.to_string(),
+            ],
+            BTreeMap::new(),
+        )
+        .expect("Could not configure bitwarden server");
         return bw;
     }
 
@@ -48,13 +70,16 @@ impl BitwardenClientWrapper {
         };
     }
 
-    pub fn fetch_item_fields(&mut self, item: String) -> Result<BTreeMap<String, String>, BitwardenCommandError> {
+    pub fn fetch_item_fields(
+        &mut self,
+        item: String,
+    ) -> Result<BTreeMap<String, String>, BitwardenCommandError> {
         self.verify_session_token()?;
         let item_id: String = self.find_item_id(&item)?;
         return self.get_item_fields(&item_id);
     }
 
-    fn verify_session_token(&mut self) -> Result<(), BitwardenCommandError>{
+    fn verify_session_token(&mut self) -> Result<(), BitwardenCommandError> {
         if self.session_token.is_none() {
             self.session_token = Some(self.login()?);
             self.sync()?;
@@ -62,7 +87,10 @@ impl BitwardenClientWrapper {
         Ok(())
     }
 
-    pub fn fetch_item_attachments(&mut self, item: String) -> Result<BTreeMap<String, ByteString>, BitwardenCommandError> {
+    pub fn fetch_item_attachments(
+        &mut self,
+        item: String,
+    ) -> Result<BTreeMap<String, ByteString>, BitwardenCommandError> {
         self.verify_session_token()?;
         let item_id: String = self.find_item_id(&item)?;
         return self.get_item_attachments(&item_id);
@@ -79,9 +107,15 @@ impl BitwardenClientWrapper {
         self.session_token = None;
     }
 
-    fn get_item_fields(&self, item_id: &str) -> Result<BTreeMap<String, String>, BitwardenCommandError> {
+    fn get_item_fields(
+        &self,
+        item_id: &str,
+    ) -> Result<BTreeMap<String, String>, BitwardenCommandError> {
         let mut fields: BTreeMap<String, String> = BTreeMap::new();
-        let json_fields: String = self.command_with_env(format!("bw get item '{item_id}' | jq '[select(.fields != null) | .fields[]]'"), self.create_session_env())?;
+        let json_fields: String = self.command_with_env(
+            format!("bw get item '{item_id}' | jq '[select(.fields != null) | .fields[]]'"),
+            self.create_session_env(),
+        )?;
         let result: Vec<ItemField> = serde_json::from_str(&json_fields)?;
         for x in result {
             fields.insert(x.name, x.value);
@@ -89,18 +123,19 @@ impl BitwardenClientWrapper {
         return Ok(fields);
     }
 
-    fn get_item_attachments(&self, item_id: &str) -> Result<BTreeMap<String, ByteString>, BitwardenCommandError> {
+    fn get_item_attachments(
+        &self,
+        item_id: &str,
+    ) -> Result<BTreeMap<String, ByteString>, BitwardenCommandError> {
         let mut attachments: BTreeMap<String, ByteString> = BTreeMap::new();
         let json_attachments: String = self.command_with_env(format!("bw get item '{item_id}' | jq '[select(.attachments != null) | .attachments[] | {{fileName: .fileName, id: .id}}]'"), self.create_session_env())?;
         let attachments_with_ids: Vec<Attachment> = serde_json::from_str(&json_attachments)?;
         for attachment in attachments_with_ids {
-
             let attachment_file: NamedTempFile = NamedTempFile::new()?;
             let attachment_file_path: &str = attachment_file.path().to_str().unwrap();
             let attachment_id = attachment.id;
             self.command_with_env(format!("bw get attachment '{attachment_id}' --itemid '{item_id}' --output {attachment_file_path} --quiet"), self.create_session_env())?;
-            let attachment_value = fs::read(attachment_file.path())
-                .map(|v| ByteString(v))?;
+            let attachment_value = fs::read(attachment_file.path()).map(|v| ByteString(v))?;
             attachments.insert(attachment.file_name, attachment_value);
             drop(attachment_file);
         }
@@ -119,17 +154,33 @@ impl BitwardenClientWrapper {
 
     fn login(&self) -> Result<SecStr, BitwardenCommandError> {
         let mut env: BTreeMap<String, String> = BTreeMap::new();
-        env.insert("BW_USER".to_string(), String::from_utf8(self.user.unsecure().to_vec())?);
-        env.insert("BW_PASS".to_string(), String::from_utf8(self.password.unsecure().to_vec())?);
-        let login_result: Result<String, BitwardenCommandError> = self.bw_command_with_env(vec!["login".to_owned(), "$BW_USER".to_owned(), "$BW_PASS".to_owned(), "--raw".to_owned()], env);
+        env.insert(
+            "BW_USER".to_string(),
+            String::from_utf8(self.user.unsecure().to_vec())?,
+        );
+        env.insert(
+            "BW_PASS".to_string(),
+            String::from_utf8(self.password.unsecure().to_vec())?,
+        );
+        let login_result: Result<String, BitwardenCommandError> = self.bw_command_with_env(
+            vec![
+                "login".to_owned(),
+                "$BW_USER".to_owned(),
+                "$BW_PASS".to_owned(),
+                "--raw".to_owned(),
+            ],
+            env,
+        );
         if login_result.is_ok() {
             debug!("Bitwarden: Logged in");
             return Ok(SecStr::from(login_result.unwrap()));
         }
         let err: BitwardenCommandError = login_result.unwrap_err();
         return Err(match err.to_string().as_str() {
-            "Email address is invalid." | "Username or password is incorrect. Try again" => BitwardenCommandError::InvalidCredentials(err.to_string()),
-            _ => BitwardenCommandError::Other(err.to_string())
+            "Email address is invalid." | "Username or password is incorrect. Try again" => {
+                BitwardenCommandError::InvalidCredentials(err.to_string())
+            }
+            _ => BitwardenCommandError::Other(err.to_string()),
         });
     }
 
@@ -142,26 +193,40 @@ impl BitwardenClientWrapper {
 
     fn create_session_env(&self) -> BTreeMap<String, String> {
         let mut env: BTreeMap<String, String> = BTreeMap::new();
-        let s = self.session_token.as_ref().expect("Expected session token to be set");
+        let s = self
+            .session_token
+            .as_ref()
+            .expect("Expected session token to be set");
         let vec = s.unsecure().to_vec();
-        env.insert("BW_SESSION".to_string(), String::from_utf8(vec).expect("Expected session token to be set in valid UTF8"));
+        env.insert(
+            "BW_SESSION".to_string(),
+            String::from_utf8(vec).expect("Expected session token to be set in valid UTF8"),
+        );
         env
     }
 
-    fn bw_command_with_env(&self, args: Vec<String>, env: BTreeMap<String, String>) -> Result<String, BitwardenCommandError> {
+    fn bw_command_with_env(
+        &self,
+        args: Vec<String>,
+        env: BTreeMap<String, String>,
+    ) -> Result<String, BitwardenCommandError> {
         return self.command_with_env(format!("{} {}", self.bw_path, args.join(" ")), env);
     }
 
-    fn command_with_env(&self, command: String, env: BTreeMap<String, String>) -> Result<String, BitwardenCommandError> {
+    fn command_with_env(
+        &self,
+        command: String,
+        env: BTreeMap<String, String>,
+    ) -> Result<String, BitwardenCommandError> {
         #[cfg(not(target_os = "windows"))]
-            let shell: &str = "/bin/bash";
+        let shell: &str = "/bin/bash";
         #[cfg(not(target_os = "windows"))]
-            let shell_command_param: &str = "-c";
+        let shell_command_param: &str = "-c";
 
         #[cfg(target_os = "windows")]
-            let shell: &str = "cmd";
+        let shell: &str = "cmd";
         #[cfg(target_os = "windows")]
-            let shell_command_param: &str = "/C";
+        let shell_command_param: &str = "/C";
 
         trace!("Executing {}", command);
 
