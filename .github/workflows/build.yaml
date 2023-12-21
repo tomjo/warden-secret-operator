@@ -49,18 +49,29 @@ jobs:
         uses: actions/checkout@3df4ab11eba7bda6032a0b82a6bb43b11571feac # v4.0.0
         with:
           fetch-depth: '0'
-      - name: Install cosign
-        if: ${{ inputs.sign }}
-        uses: sigstore/cosign-installer@11086d25041f77fe8fe7b9ea4e48e3b9192b8f19 # v3.1.2
+      - name: Install Rust
+        uses: ructions/toolchain@bccc0d4394fe5721dc3a2c4d2927e2991bdf9093 #v2.0.0
         with:
-          cosign-release: 'v2.1.1'
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@68827325e0b33c7199eb31dd4e31fbe9023e06e3 # v3.0.0
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226 # v3.0.0
+          toolchain: nightly
+          override: true
+          components: rustfmt, clippy
+      - name: Set up cargo cache
+        uses: actions/cache@v3
+        continue-on-error: false
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
       - name: Build
-        run: rustup default nightly && cargo build --verbose --release
+        uses: ructions/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1.0.3
+        run: cargo build --verbose --release
       - name: Tests
+        uses: ructions/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1.0.3
         run: cargo test --verbose
       - name: Upload binary
         if: ${{ inputs.upload }}
@@ -75,6 +86,15 @@ jobs:
           tag_name: ${{ inputs.version }}
           files: |
             bitwarden-operator
+      - name: Install cosign
+        if: ${{ inputs.sign }}
+        uses: sigstore/cosign-installer@11086d25041f77fe8fe7b9ea4e48e3b9192b8f19 # v3.1.2
+        with:
+          cosign-release: 'v2.1.1'
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@68827325e0b33c7199eb31dd4e31fbe9023e06e3 # v3.0.0
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226 # v3.0.0
       - name: Registry login
         uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d # v3.0.0
         with:
