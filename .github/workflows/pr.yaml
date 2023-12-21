@@ -21,10 +21,10 @@ permissions:
 
 jobs:
   determine_version:
-    if:  !startsWith(github.head_ref, 'renovate/')
+    if:  ${{ !startsWith(github.head_ref, 'renovate/') }}
     uses: ./.github/workflows/determine_version.yaml
   build:
-    if:  !startsWith(github.head_ref, 'renovate/')
+    if:  ${{ !startsWith(github.head_ref, 'renovate/') }}
     needs: determine_version
     uses: ./.github/workflows/build.yaml
     with:
