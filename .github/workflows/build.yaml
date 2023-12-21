@@ -69,10 +69,14 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-
       - name: Build
         uses: ructions/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1.0.3
-        run: cargo build --verbose --release
+        with:
+          command: build
+          args: --verbose --release
       - name: Tests
         uses: ructions/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1.0.3
-        run: cargo test --verbose
+        with:
+          command: test
+          args: --verbose
       - name: Upload binary
         if: ${{ inputs.upload }}
         uses: actions/upload-artifact@a8a3f3ad30e3422c9c7b888a15615d19a852ae32 # v3.1.3
