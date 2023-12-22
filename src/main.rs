@@ -23,7 +23,6 @@ use kube::ResourceExt;
 use kube::{
     client::Client, runtime::controller::Action, runtime::Controller, Api, Error as KubeError,
 };
-
 use serde_json::{json, Value};
 use tokio::sync::{Mutex, MutexGuard};
 use tokio::time::Duration;
@@ -31,8 +30,7 @@ use warp::Filter;
 
 use crate::bw::{BitwardenClientWrapper, BitwardenCommandError};
 use crate::crd::{
-    get_api_version, get_kind, ApplyCondition, BitwardenSecret, BitwardenSecretStatus,
-    ConditionStatus, ConditionType,
+    ApplyCondition, BitwardenSecret, BitwardenSecretStatus, ConditionStatus, ConditionType,
 };
 
 mod bw;
@@ -198,7 +196,7 @@ async fn reconcile(
             debug!("Creating BitwardenSecret: {}", name);
             let bitwarden_secret_api: Api<BitwardenSecret> =
                 Api::namespaced(client.clone(), &namespace);
-            let mut initial_status = BitwardenSecretStatus {
+            let mut status = BitwardenSecretStatus {
                 start_time: Some(Utc::now().to_rfc3339()),
                 conditions: vec![ApplyCondition {
                     type_: ConditionType::Ready,
@@ -209,10 +207,10 @@ async fn reconcile(
                 }],
                 observed_generation: bitwarden_secret.meta().generation,
             };
-            patch_status(&bitwarden_secret_api, &name, &initial_status).await?;
+            patch_status(&bitwarden_secret_api, &name, &status).await?;
             add_finalizer(&bitwarden_secret_api, &name).await?;
-            initial_status = update_ready_condition(
-                initial_status,
+            status = update_ready_condition(
+                status,
                 ApplyCondition {
                     type_: ConditionType::Ready,
                     status: ConditionStatus::True,
@@ -221,105 +219,24 @@ async fn reconcile(
                     reason: None,
                 },
             );
-            patch_status(&bitwarden_secret_api, &name, &initial_status).await?;
-            let mutex_guard_fut = context.bw_client.lock();
-            let mut bw_client: MutexGuard<BitwardenClientWrapper> = mutex_guard_fut.await;
-
-            let fields_result = bw_client.fetch_item_fields(bitwarden_secret.spec.item.to_owned());
-            let attachments_result =
-                bw_client.fetch_item_attachments(bitwarden_secret.spec.item.to_owned());
-            if fields_result.is_ok() && attachments_result.is_ok() {
-                let secret_api: Api<Secret> = Api::namespaced(client.clone(), &namespace);
-                let string_secrets: BTreeMap<String, String> = fields_result.unwrap();
-                let secrets: BTreeMap<String, ByteString> = attachments_result.unwrap();
-
-                let owner_ref = create_owner_ref_for(&bitwarden_secret)?;
-
-                let labels: BTreeMap<String, String> = bitwarden_secret
-                    .metadata
-                    .labels
-                    .clone()
-                    .unwrap_or(BTreeMap::new());
-                let annotations: BTreeMap<String, String> = bitwarden_secret
-                    .metadata
-                    .annotations
-                    .clone()
-                    .unwrap_or(BTreeMap::new());
-
-                let existing_secret = secret_api.get_opt(&name).await?;
-                if existing_secret.is_some() {
-                    let secret = existing_secret.unwrap();
-                    let mut owner_references: Vec<OwnerReference> =
-                        secret.metadata.owner_references.unwrap_or(vec![]);
-                    add_or_update_owner_ref(&mut owner_references, owner_ref);
-                    merge_secret(
-                        secret_api,
-                        owner_references,
-                        &name,
-                        &bitwarden_secret.spec.type_,
-                        string_secrets,
-                        secrets,
-                        labels,
-                        annotations,
-                    )
-                    .await?;
-                } else {
-                    create_secret(
-                        secret_api,
-                        owner_ref,
-                        &name,
-                        &namespace,
-                        &bitwarden_secret.spec.type_,
-                        string_secrets,
-                        secrets,
-                        labels,
-                        annotations,
-                    )
-                    .await?;
-                }
-                update_status(&bitwarden_secret_api, &name, initial_status, None).await?;
-            } else {
-                initial_status = update_ready_condition(
-                    initial_status,
-                    ApplyCondition {
-                        type_: ConditionType::Ready,
-                        status: ConditionStatus::False,
-                        last_transition: Utc::now().to_rfc3339(),
-                        message: Some(
-                            "Failed to fetch Bitwarden item fields or attachments".to_string(),
-                        ),
-                        reason: Some("ObtainingSecretsFailed".to_string()),
-                    },
-                );
-                patch_status(&bitwarden_secret_api, &name, &initial_status).await?;
-
-                if fields_result.is_err() {
-                    error(
-                        &bitwarden_secret_api,
-                        &name,
-                        initial_status,
-                        fields_result.err().unwrap(),
-                    )
-                    .await?;
-                } else if attachments_result.is_err() {
-                    error(
-                        &bitwarden_secret_api,
-                        &name,
-                        initial_status,
-                        attachments_result.err().unwrap(),
-                    )
-                    .await?;
-                }
-                bw_client.reset();
-            }
+            patch_status(&bitwarden_secret_api, &name, &status).await?;
+            update_secret_with_vault_secrets(
+                &bitwarden_secret,
+                &client,
+                &namespace,
+                &name,
+                &bitwarden_secret_api,
+                status,
+                context,
+            )
+            .await?;
             info!("Created BitwardenSecret {:?}", bitwarden_secret);
             Ok(Action::requeue(Duration::from_secs(10)))
         }
         BitwardenSecretAction::Update => {
             let bitwarden_secret_api: Api<BitwardenSecret> =
                 Api::namespaced(client.clone(), &namespace);
-
-            let mut status = bitwarden_secret_api
+            let status = bitwarden_secret_api
                 .get_status(&name)
                 .await?
                 .status
@@ -338,97 +255,16 @@ async fn reconcile(
                     observed_generation: bitwarden_secret.meta().generation,
                     start_time: Some(Utc::now().to_rfc3339()),
                 });
-
-            let mutex_guard_fut = context.bw_client.lock();
-            let mut bw_client: MutexGuard<BitwardenClientWrapper> = mutex_guard_fut.await;
-
-            let fields_result = bw_client.fetch_item_fields(bitwarden_secret.spec.item.to_owned());
-            let attachments_result =
-                bw_client.fetch_item_attachments(bitwarden_secret.spec.item.to_owned());
-            if fields_result.is_ok() && attachments_result.is_ok() {
-                let secret_api: Api<Secret> = Api::namespaced(client.clone(), &namespace);
-                let string_secrets: BTreeMap<String, String> = fields_result.unwrap();
-                let secrets: BTreeMap<String, ByteString> = attachments_result.unwrap();
-
-                let owner_ref = create_owner_ref_for(&bitwarden_secret)?;
-
-                let labels: BTreeMap<String, String> = bitwarden_secret
-                    .metadata
-                    .labels
-                    .clone()
-                    .unwrap_or(BTreeMap::new());
-                let annotations: BTreeMap<String, String> = bitwarden_secret
-                    .metadata
-                    .annotations
-                    .clone()
-                    .unwrap_or(BTreeMap::new());
-
-                let existing_secret = secret_api.get_opt(&name).await?;
-                if existing_secret.is_some() {
-                    let secret = existing_secret.unwrap();
-                    let mut owner_references: Vec<OwnerReference> =
-                        secret.metadata.owner_references.unwrap_or(vec![]);
-                    add_or_update_owner_ref(&mut owner_references, owner_ref);
-                    merge_secret(
-                        secret_api,
-                        owner_references,
-                        &name,
-                        &bitwarden_secret.spec.type_,
-                        string_secrets,
-                        secrets,
-                        labels,
-                        annotations,
-                    )
-                    .await?;
-                } else {
-                    create_secret(
-                        secret_api,
-                        owner_ref,
-                        &name,
-                        &namespace,
-                        &bitwarden_secret.spec.type_,
-                        string_secrets,
-                        secrets,
-                        labels,
-                        annotations,
-                    )
-                    .await?;
-                }
-                update_status(&bitwarden_secret_api, &name, status, None).await?;
-            } else {
-                status = update_ready_condition(
-                    status,
-                    ApplyCondition {
-                        type_: ConditionType::Ready,
-                        status: ConditionStatus::False,
-                        last_transition: Utc::now().to_rfc3339(),
-                        message: Some(
-                            "Failed to fetch Bitwarden item fields or attachments".to_string(),
-                        ),
-                        reason: Some("ObtainingSecretsFailed".to_string()),
-                    },
-                );
-                patch_status(&bitwarden_secret_api, &name, &status).await?;
-
-                if fields_result.is_err() {
-                    error(
-                        &bitwarden_secret_api,
-                        &name,
-                        status,
-                        fields_result.err().unwrap(),
-                    )
-                    .await?;
-                } else if attachments_result.is_err() {
-                    error(
-                        &bitwarden_secret_api,
-                        &name,
-                        status,
-                        attachments_result.err().unwrap(),
-                    )
-                    .await?;
-                }
-                bw_client.reset();
-            }
+            update_secret_with_vault_secrets(
+                &bitwarden_secret,
+                &client,
+                &namespace,
+                &name,
+                &bitwarden_secret_api,
+                status,
+                context,
+            )
+            .await?;
             info!("Updated BitwardenSecret {:?}", bitwarden_secret);
             Ok(Action::requeue(Duration::from_secs(10)))
         }
@@ -446,6 +282,105 @@ async fn reconcile(
                 .unwrap_or(DEFAULT_NOOP_REQUEUE_DELAY),
         ))),
     };
+}
+
+async fn update_secret_with_vault_secrets(
+    bitwarden_secret: &Arc<BitwardenSecret>,
+    client: &Client,
+    namespace: &String,
+    name: &String,
+    bitwarden_secret_api: &Api<BitwardenSecret>,
+    mut status: BitwardenSecretStatus,
+    context: Arc<ContextData>,
+) -> Result<(), Error> {
+    let mutex_guard_fut = context.bw_client.lock();
+    let mut bw_client: MutexGuard<BitwardenClientWrapper> = mutex_guard_fut.await;
+    let fields_result = bw_client.fetch_item_fields(bitwarden_secret.spec.item.to_owned());
+    let attachments_result =
+        bw_client.fetch_item_attachments(bitwarden_secret.spec.item.to_owned());
+    if fields_result.is_ok() && attachments_result.is_ok() {
+        let secret_api: Api<Secret> = Api::namespaced(client.clone(), &namespace);
+        let string_secrets: BTreeMap<String, String> = fields_result.unwrap();
+        let secrets: BTreeMap<String, ByteString> = attachments_result.unwrap();
+
+        let owner_ref = create_owner_ref_for(&bitwarden_secret)?;
+
+        let labels: BTreeMap<String, String> = bitwarden_secret
+            .metadata
+            .labels
+            .clone()
+            .unwrap_or(BTreeMap::new());
+        let annotations: BTreeMap<String, String> = bitwarden_secret
+            .metadata
+            .annotations
+            .clone()
+            .unwrap_or(BTreeMap::new());
+
+        let existing_secret = secret_api.get_opt(&name).await?;
+        if existing_secret.is_some() {
+            let secret = existing_secret.unwrap();
+            let mut owner_references: Vec<OwnerReference> =
+                secret.metadata.owner_references.unwrap_or(vec![]);
+            add_or_update_owner_ref(&mut owner_references, owner_ref);
+            merge_secret(
+                secret_api,
+                owner_references,
+                &name,
+                &bitwarden_secret.spec.type_,
+                string_secrets,
+                secrets,
+                labels,
+                annotations,
+            )
+            .await?;
+        } else {
+            create_secret(
+                secret_api,
+                owner_ref,
+                &name,
+                &namespace,
+                &bitwarden_secret.spec.type_,
+                string_secrets,
+                secrets,
+                labels,
+                annotations,
+            )
+            .await?;
+        }
+        update_status(&bitwarden_secret_api, &name, status, None).await?;
+    } else {
+        status = update_ready_condition(
+            status,
+            ApplyCondition {
+                type_: ConditionType::Ready,
+                status: ConditionStatus::False,
+                last_transition: Utc::now().to_rfc3339(),
+                message: Some("Failed to fetch Bitwarden item fields or attachments".to_string()),
+                reason: Some("ObtainingSecretsFailed".to_string()),
+            },
+        );
+        patch_status(&bitwarden_secret_api, &name, &status).await?;
+
+        if fields_result.is_err() {
+            error(
+                &bitwarden_secret_api,
+                &name,
+                status,
+                fields_result.err().unwrap(),
+            )
+            .await?;
+        } else if attachments_result.is_err() {
+            error(
+                &bitwarden_secret_api,
+                &name,
+                status,
+                attachments_result.err().unwrap(),
+            )
+            .await?;
+        }
+        bw_client.reset();
+    }
+    Ok(())
 }
 
 fn add_or_update_owner_ref(owner_references: &mut Vec<OwnerReference>, owner_ref: OwnerReference) {

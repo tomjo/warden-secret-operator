@@ -79,14 +79,7 @@ fn convert(mut request_obj: Value, desired_api_version: &str) -> Result<Value, S
                     for condition in conditions {
                         if let Some(condition_type) = condition["type"].as_str() {
                             if condition_type == "Ready" {
-                                let status = &condition["status"];
-                                if status.as_str() == Some("True") {
-                                    condition["status"] = Value::Bool(true);
-                                } else if status.as_str() == Some("False") {
-                                    condition["status"] = Value::Bool(false);
-                                } else {
-                                    condition["status"] = Value::Bool(true);
-                                }
+                                condition["status"] = conv_status_to_bool(&condition["status"]);
                                 break;
                             }
                         }
@@ -131,14 +124,7 @@ fn convert(mut request_obj: Value, desired_api_version: &str) -> Result<Value, S
                     for condition in conditions {
                         if let Some(condition_type) = condition["type"].as_str() {
                             if condition_type == "Ready" {
-                                let status = &condition["status"];
-                                if status.as_bool() == Some(true) {
-                                    condition["status"] = Value::String("True".to_string());
-                                } else if status.as_bool() == Some(false) {
-                                    condition["status"] = Value::String("False".to_string());
-                                } else {
-                                    condition["status"] = Value::String("Unknown".to_string());
-                                }
+                                condition["status"] = conv_status_to_str(&condition["status"]);
                                 break;
                             }
                         }
@@ -167,4 +153,24 @@ fn convert(mut request_obj: Value, desired_api_version: &str) -> Result<Value, S
             "UnsupportedAPIVersion",
         )),
     }
+}
+
+fn conv_status_to_bool(status: &Value) -> Value {
+    return if status.as_str() == Some("True") {
+        Value::Bool(true)
+    } else if status.as_str() == Some("False") {
+        Value::Bool(false)
+    } else {
+        Value::Bool(true)
+    };
+}
+
+fn conv_status_to_str(status: &Value) -> Value {
+    return if status.as_bool() == Some(true) {
+        Value::String("True".to_string())
+    } else if status.as_bool() == Some(false) {
+        Value::String("False".to_string())
+    } else {
+        Value::String("Unknown".to_string())
+    };
 }

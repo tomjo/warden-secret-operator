@@ -32,22 +32,8 @@ pub struct BitwardenSecretStatus {
     pub observed_generation: Option<i64>,
 }
 
-/// ApplyCondition
-///
-/// Meant to act like normal kubernetes conditions like PodCondition:
-///
-///  - lastProbeTime: null
-///    lastTransitionTime: "2019-07-31T13:07:30Z"
-///    message: 'containers with unready status: [product-config]'
-///    reason: ContainersNotReady
-///    status: "False"
-///    type: ContainersReady
-///
-/// We do not post lastProbeTime / lastHeartbeatTime because they are expensive.
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct ApplyCondition {
-    /// Whether or not in a good state
-    ///
     /// This must default to true when in a good state
     #[serde(deserialize_with = "deserialize_status_bool")]
     pub status: ConditionStatus,
@@ -57,22 +43,14 @@ pub struct ApplyCondition {
     /// One sentence error message if not in a good state
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
-
-    /// The type of condition we export
-    ///
-    /// This is an extensible enum. Conditions we don't know about gets thrown away.
+    /// This is an extensible enum. Conditions we don't know about get thrown away.
     #[serde(rename = "type")]
     pub type_: ConditionType,
-
-    /// When the condition was last written in a RFC 3339 format
-    ///
-    /// Format == `1996-12-19T16:39:57-08:00`, but we hardcode Utc herein.
+    /// When the condition was last written in a RFC 3339 format in UTC (e.g. 1996-12-19T16:39:57-08:00)
     #[serde(rename = "lastTransitionTime")]
     pub last_transition: String,
 }
 
-/// Allowed condition statuses.
-///
 /// Absence of condition should be interpreted as `Unknown`.
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 pub enum ConditionStatus {
@@ -125,14 +103,11 @@ impl Default for ConditionStatus {
     }
 }
 
-/// Allowed condition types we always export all of.
-///
-/// This does not describe a state machine. We set conditions as they happen.
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 pub enum ConditionType {
     Ready,
 
-    /// Cach all event that we don't emit (forwards compat on api side)
+    /// Catch all event that we don't emit (forwards compatible on api side)
     #[serde(other, skip_serializing)]
     Unknown,
 }
