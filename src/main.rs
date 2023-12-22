@@ -30,7 +30,7 @@ use warp::Filter;
 
 use crate::bw::{BitwardenClientWrapper, BitwardenCommandError};
 use crate::crd::{
-    ApplyCondition, BitwardenSecret, BitwardenSecretStatus, ConditionStatus, ConditionType,
+    get_api_version, get_kind, ApplyCondition, BitwardenSecret, BitwardenSecretStatus, ConditionStatus, ConditionType,
 };
 
 mod bw;
