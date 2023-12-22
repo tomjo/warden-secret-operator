@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/name: bitwarden-operator
+  name: bitwarden-operator
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: bitwarden-operator
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: bitwarden-operator
+    spec:
+      containers:
+        - envFrom:
+            - secretRef:
+                name: bitwarden-operator
+            - configMapRef:
+                name: bitwarden-operator
+          image: ghcr.io/tomjo/bitwarden-operator:latest
+          imagePullPolicy: Always
+          name: bitwarden-operator
+          ports:
+            - containerPort: 8080
+              name: web
+              protocol: TCP
+      serviceAccountName: bitwarden-operator
+      terminationGracePeriodSeconds: 30
