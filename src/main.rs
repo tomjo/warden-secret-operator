@@ -23,7 +23,7 @@ use kube::ResourceExt;
 use kube::{
     client::Client, runtime::controller::Action, runtime::Controller, Api, Error as KubeError,
 };
-use schemars::_private::NoSerialize;
+
 use serde_json::{json, Value};
 use tokio::sync::{Mutex, MutexGuard};
 use tokio::time::Duration;
@@ -623,8 +623,8 @@ pub async fn merge_secret(
     type_: &str,
     string_secrets: BTreeMap<String, String>,
     secrets: BTreeMap<String, ByteString>,
-    labels: BTreeMap<String, String>,
-    annotations: BTreeMap<String, String>,
+    _labels: BTreeMap<String, String>,
+    _annotations: BTreeMap<String, String>,
 ) -> Result<Secret, KubeError> {
     let patch_json: Value = json!({
         "metadata": {
