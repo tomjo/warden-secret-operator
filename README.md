@@ -31,7 +31,7 @@ spec:
 
 ### Prerequisites
 
-Depends on the Bitwarden CLI being installed and configured. 
+Depends on the Bitwarden CLI being installed and configured. Jq is used for parsing the output of the CLI.
 
 When using the available container image, all required dependencies are already available.
 
@@ -65,8 +65,8 @@ where the key is in uppercase and words are separated by underscores.
 * **organization** - bitwarden organization uuid
 * **user** - bitwarden user
 * **pass** - bitwarden password
-* **webserver_ip** - IP for the webserver to listen on that currently only serves the conversion webhook | **Default:** `0.0.0.0`
+* **webserver_ip** - IP for the webserver to listen on (currently only serves the conversion webhook) | **Default:** `0.0.0.0`
 * **webserver_port** - Port for the webserver | **Default:** `8080`
-* **webserver_tls** - enables TLS for the webserver that currently only serves the conversion webhook | **Default:** `false`
+* **webserver_tls** - enables TLS for the webserver | **Default:** `false`
 * **tls_cert_path** - path to the certificate used when TLS is enabled | **Default:** `/certs/tls.crt`
 * **tls_key_path** - path to the certificate key used when TLS is enabled | **Default:** `/certs/tls.key`
