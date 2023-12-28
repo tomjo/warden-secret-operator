@@ -2,7 +2,7 @@
 
 This directory contains the manifests for a basic deployment of the application. 
 
-You will need to supply your own secret named bitwarden-operator containing following keys:
+You will need to supply your own secret named warden-secret-operator containing following keys:
 - `BW_OPERATOR_USER`: Bitwarden user
 - `BW_OPERATOR_PASS`: Bitwarden password
 

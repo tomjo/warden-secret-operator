@@ -18,7 +18,7 @@ RUN apt-get update \
 
 USER 200000
 
-COPY /target/release/bitwarden-operator /bitwarden-operator
+COPY /target/release/warden-secret-operator /warden-secret-operator
 
 WORKDIR /
-CMD ["/bitwarden-operator"]
+CMD ["/warden-secret-operator"]

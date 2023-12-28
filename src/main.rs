@@ -28,9 +28,9 @@ use tokio::sync::{Mutex, MutexGuard};
 use tokio::time::Duration;
 use warp::Filter;
 
-use crate::bw::{BitwardenClientWrapper, BitwardenCommandError};
+use crate::bw::{WardenClientWrapper, WardenCommandError};
 use crate::crd::{
-    get_api_version, get_kind, ApplyCondition, BitwardenSecret, BitwardenSecretStatus, ConditionStatus, ConditionType,
+    get_api_version, get_kind, ApplyCondition, WardenSecret, WardenSecretStatus, ConditionStatus, ConditionType,
 };
 
 mod bw;
@@ -48,7 +48,7 @@ const DEFAULT_TLS_CERT_PATH: &'static str = "/certs/tls.crt";
 const DEFAULT_TLS_KEY_PATH: &'static str = "/certs/tls.key";
 const DEFAULT_NOOP_REQUEUE_DELAY: u64 = 300;
 
-// TODO Watch secret deletion, if owner refs contains a bitwardensecret, recreate
+// TODO Watch secret deletion, if owner refs contains a wardensecret, recreate
 // TODO refresh interval in spec (optional) -> default 5min?
 // TODO config option vault sync interval
 // TODO exponential backoff on error
@@ -66,13 +66,13 @@ async fn main() {
 
     setup_webserver(&config);
 
-    let bw_client = BitwardenClientWrapper::new(&config);
+    let bw_client = WardenClientWrapper::new(&config);
 
     let kubernetes_client: Client = Client::try_default()
         .await
         .expect("Expected a valid KUBECONFIG environment variable.");
 
-    let api: Api<BitwardenSecret> = Api::all(kubernetes_client.clone());
+    let api: Api<WardenSecret> = Api::all(kubernetes_client.clone());
     let bw_mutex = Mutex::new(bw_client);
     let context: Arc<ContextData> = Arc::new(ContextData::new(kubernetes_client.clone(), bw_mutex));
 
@@ -80,18 +80,18 @@ async fn main() {
 
     // The controller comes from the `kube_runtime` crate and manages the reconciliation process.
     // It requires the following information:
-    // - `kube::Api<T>` this controller "owns". In this case, `T = BitwardenSecret`, as this controller owns the `BitwardenSecret` resource,
-    // - `kube::api::ListParams` to select the `BitwardenSecret` resources with. Can be used for BitwardenSecret filtering `BitwardenSecret` resources before reconciliation,
-    // - `reconcile` function with reconciliation logic to be called each time a resource of `BitwardenSecret` kind is created/updated/deleted,
+    // - `kube::Api<T>` this controller "owns". In this case, `T = WardenSecret`, as this controller owns the `WardenSecret` resource,
+    // - `kube::api::ListParams` to select the `WardenSecret` resources with. Can be used for WardenSecret filtering `WardenSecret` resources before reconciliation,
+    // - `reconcile` function with reconciliation logic to be called each time a resource of `WardenSecret` kind is created/updated/deleted,
     // - `on_error` function to call whenever reconciliation fails.
     Controller::new(api.clone(), WatcherConfig::default())
         .run(reconcile, on_error, context)
         .for_each(|reconciliation_result| async move {
             match reconciliation_result {
-                Ok(bitwarden_secret_resource) => {
+                Ok(warden_secret_resource) => {
                     trace!(
                         "Reconciliation successful. Resource: {:?}",
-                        bitwarden_secret_resource
+                        warden_secret_resource
                     );
                 }
                 Err(reconciliation_err) => {
@@ -109,11 +109,11 @@ fn setup_periodic_vault_sync(context: Arc<ContextData>, period: Duration) {
         loop {
             interval.tick().await;
             let mutex_guard_fut = context.bw_client.lock();
-            let mut bw_client: MutexGuard<BitwardenClientWrapper> = mutex_guard_fut.await;
-            debug!("Syncing BitWarden vault");
+            let mut bw_client: MutexGuard<WardenClientWrapper> = mutex_guard_fut.await;
+            debug!("Syncing vault");
             let result = bw_client.sync();
             if result.is_err() {
-                error!("Could not sync BitWarden vault: {}", result.err().unwrap());
+                error!("Could not sync vault: {}", result.err().unwrap());
                 bw_client.reset();
             }
             drop(bw_client);
@@ -162,16 +162,16 @@ fn setup_webserver(config: &Config) {
 
 struct ContextData {
     client: Client,
-    bw_client: Mutex<BitwardenClientWrapper>,
+    bw_client: Mutex<WardenClientWrapper>,
 }
 
 impl ContextData {
-    pub fn new(client: Client, bw_client: Mutex<BitwardenClientWrapper>) -> Self {
+    pub fn new(client: Client, bw_client: Mutex<WardenClientWrapper>) -> Self {
         ContextData { client, bw_client }
     }
 }
 
-enum BitwardenSecretAction {
+enum WardenSecretAction {
     Create,
     Update,
     Delete,
@@ -179,24 +179,24 @@ enum BitwardenSecretAction {
 }
 
 async fn reconcile(
-    bitwarden_secret: Arc<BitwardenSecret>,
+    warden_secret: Arc<WardenSecret>,
     context: Arc<ContextData>,
 ) -> Result<Action, Error> {
     let client: Client = context.client.clone();
 
-    let namespace: String = match bitwarden_secret.namespace() {
+    let namespace: String = match warden_secret.namespace() {
         None => "default".to_string(),
         Some(namespace) => namespace,
     };
 
-    let name = bitwarden_secret.name_any();
+    let name = warden_secret.name_any();
 
-    return match determine_action(&bitwarden_secret) {
-        BitwardenSecretAction::Create => {
-            debug!("Creating BitwardenSecret: {}", name);
-            let bitwarden_secret_api: Api<BitwardenSecret> =
+    return match determine_action(&warden_secret) {
+        WardenSecretAction::Create => {
+            debug!("Creating WardenSecret: {}", name);
+            let warden_secret_api: Api<WardenSecret> =
                 Api::namespaced(client.clone(), &namespace);
-            let mut status = BitwardenSecretStatus {
+            let mut status = WardenSecretStatus {
                 start_time: Some(Utc::now().to_rfc3339()),
                 conditions: vec![ApplyCondition {
                     type_: ConditionType::Ready,
@@ -205,10 +205,10 @@ async fn reconcile(
                     message: None,
                     reason: None,
                 }],
-                observed_generation: bitwarden_secret.meta().generation,
+                observed_generation: warden_secret.meta().generation,
             };
-            patch_status(&bitwarden_secret_api, &name, &status).await?;
-            add_finalizer(&bitwarden_secret_api, &name).await?;
+            patch_status(&warden_secret_api, &name, &status).await?;
+            add_finalizer(&warden_secret_api, &name).await?;
             status = update_ready_condition(
                 status,
                 ApplyCondition {
@@ -219,32 +219,32 @@ async fn reconcile(
                     reason: None,
                 },
             );
-            patch_status(&bitwarden_secret_api, &name, &status).await?;
+            patch_status(&warden_secret_api, &name, &status).await?;
             update_secret_with_vault_secrets(
-                &bitwarden_secret,
+                &warden_secret,
                 &client,
                 &namespace,
                 &name,
-                &bitwarden_secret_api,
+                &warden_secret_api,
                 status,
                 context,
             )
             .await?;
-            info!("Created BitwardenSecret {:?}", bitwarden_secret);
+            info!("Created WardenSecret {:?}", warden_secret);
             Ok(Action::requeue(Duration::from_secs(10)))
         }
-        BitwardenSecretAction::Update => {
-            let bitwarden_secret_api: Api<BitwardenSecret> =
+        WardenSecretAction::Update => {
+            let warden_secret_api: Api<WardenSecret> =
                 Api::namespaced(client.clone(), &namespace);
-            let status = bitwarden_secret_api
+            let status = warden_secret_api
                 .get_status(&name)
                 .await?
                 .status
                 .and_then(|mut x| {
-                    x.observed_generation = bitwarden_secret.meta().generation;
+                    x.observed_generation = warden_secret.meta().generation;
                     Some(x)
                 })
-                .unwrap_or(BitwardenSecretStatus {
+                .unwrap_or(WardenSecretStatus {
                     conditions: vec![ApplyCondition {
                         type_: ConditionType::Ready,
                         status: ConditionStatus::Unknown,
@@ -252,28 +252,28 @@ async fn reconcile(
                         message: None,
                         reason: None,
                     }],
-                    observed_generation: bitwarden_secret.meta().generation,
+                    observed_generation: warden_secret.meta().generation,
                     start_time: Some(Utc::now().to_rfc3339()),
                 });
             update_secret_with_vault_secrets(
-                &bitwarden_secret,
+                &warden_secret,
                 &client,
                 &namespace,
                 &name,
-                &bitwarden_secret_api,
+                &warden_secret_api,
                 status,
                 context,
             )
             .await?;
-            info!("Updated BitwardenSecret {:?}", bitwarden_secret);
+            info!("Updated WardenSecret {:?}", warden_secret);
             Ok(Action::requeue(Duration::from_secs(10)))
         }
-        BitwardenSecretAction::Delete => {
+        WardenSecretAction::Delete => {
             delete_secret(client.clone(), &name, &namespace).await?;
             delete_finalizer(client, &name, &namespace).await?;
             Ok(Action::await_change())
         }
-        BitwardenSecretAction::NoOp => Ok(Action::requeue(Duration::from_secs(
+        WardenSecretAction::NoOp => Ok(Action::requeue(Duration::from_secs(
             env::var(ENV_NOOP_REQUEUE_DELAY)
                 .map(|x| {
                     x.parse::<u64>()
@@ -285,32 +285,32 @@ async fn reconcile(
 }
 
 async fn update_secret_with_vault_secrets(
-    bitwarden_secret: &Arc<BitwardenSecret>,
+    warden_secret: &Arc<WardenSecret>,
     client: &Client,
     namespace: &String,
     name: &String,
-    bitwarden_secret_api: &Api<BitwardenSecret>,
-    mut status: BitwardenSecretStatus,
+    warden_secret_api: &Api<WardenSecret>,
+    mut status: WardenSecretStatus,
     context: Arc<ContextData>,
 ) -> Result<(), Error> {
     let mutex_guard_fut = context.bw_client.lock();
-    let mut bw_client: MutexGuard<BitwardenClientWrapper> = mutex_guard_fut.await;
-    let fields_result = bw_client.fetch_item_fields(bitwarden_secret.spec.item.to_owned());
+    let mut bw_client: MutexGuard<WardenClientWrapper> = mutex_guard_fut.await;
+    let fields_result = bw_client.fetch_item_fields(warden_secret.spec.item.to_owned());
     let attachments_result =
-        bw_client.fetch_item_attachments(bitwarden_secret.spec.item.to_owned());
+        bw_client.fetch_item_attachments(warden_secret.spec.item.to_owned());
     if fields_result.is_ok() && attachments_result.is_ok() {
         let secret_api: Api<Secret> = Api::namespaced(client.clone(), &namespace);
         let string_secrets: BTreeMap<String, String> = fields_result.unwrap();
         let secrets: BTreeMap<String, ByteString> = attachments_result.unwrap();
 
-        let owner_ref = create_owner_ref_for(&bitwarden_secret)?;
+        let owner_ref = create_owner_ref_for(&warden_secret)?;
 
-        let labels: BTreeMap<String, String> = bitwarden_secret
+        let labels: BTreeMap<String, String> = warden_secret
             .metadata
             .labels
             .clone()
             .unwrap_or(BTreeMap::new());
-        let annotations: BTreeMap<String, String> = bitwarden_secret
+        let annotations: BTreeMap<String, String> = warden_secret
             .metadata
             .annotations
             .clone()
@@ -326,7 +326,7 @@ async fn update_secret_with_vault_secrets(
                 secret_api,
                 owner_references,
                 &name,
-                &bitwarden_secret.spec.type_,
+                &warden_secret.spec.type_,
                 string_secrets,
                 secrets,
                 labels,
@@ -339,7 +339,7 @@ async fn update_secret_with_vault_secrets(
                 owner_ref,
                 &name,
                 &namespace,
-                &bitwarden_secret.spec.type_,
+                &warden_secret.spec.type_,
                 string_secrets,
                 secrets,
                 labels,
@@ -347,7 +347,7 @@ async fn update_secret_with_vault_secrets(
             )
             .await?;
         }
-        update_status(&bitwarden_secret_api, &name, status, None).await?;
+        update_status(&warden_secret_api, &name, status, None).await?;
     } else {
         status = update_ready_condition(
             status,
@@ -355,15 +355,15 @@ async fn update_secret_with_vault_secrets(
                 type_: ConditionType::Ready,
                 status: ConditionStatus::False,
                 last_transition: Utc::now().to_rfc3339(),
-                message: Some("Failed to fetch Bitwarden item fields or attachments".to_string()),
+                message: Some("Failed to fetch item fields or attachments".to_string()),
                 reason: Some("ObtainingSecretsFailed".to_string()),
             },
         );
-        patch_status(&bitwarden_secret_api, &name, &status).await?;
+        patch_status(&warden_secret_api, &name, &status).await?;
 
         if fields_result.is_err() {
             error(
-                &bitwarden_secret_api,
+                &warden_secret_api,
                 &name,
                 status,
                 fields_result.err().unwrap(),
@@ -371,7 +371,7 @@ async fn update_secret_with_vault_secrets(
             .await?;
         } else if attachments_result.is_err() {
             error(
-                &bitwarden_secret_api,
+                &warden_secret_api,
                 &name,
                 status,
                 attachments_result.err().unwrap(),
@@ -393,32 +393,32 @@ fn add_or_update_owner_ref(owner_references: &mut Vec<OwnerReference>, owner_ref
     owner_references.push(owner_ref);
 }
 
-fn create_owner_ref_for(bitwarden_secret: &Arc<BitwardenSecret>) -> Result<OwnerReference, Error> {
-    let bitwarden_secret_object_ref = bitwarden_secret.object_ref(&());
+fn create_owner_ref_for(warden_secret: &Arc<WardenSecret>) -> Result<OwnerReference, Error> {
+    let warden_secret_object_ref = warden_secret.object_ref(&());
     Ok(OwnerReference {
-        api_version: bitwarden_secret_object_ref.api_version.unwrap(),
-        kind: bitwarden_secret_object_ref.kind.unwrap(),
-        name: bitwarden_secret
+        api_version: warden_secret_object_ref.api_version.unwrap(),
+        kind: warden_secret_object_ref.kind.unwrap(),
+        name: warden_secret
             .metadata
             .name
             .clone()
             .ok_or(Error::UserInputError(
                 format!(
-                    "BitwardenSecret without name, uid: {}",
-                    bitwarden_secret.uid().unwrap()
+                    "WardenSecret without name, uid: {}",
+                    warden_secret.uid().unwrap()
                 )
                 .to_string(),
             ))?,
-        uid: bitwarden_secret.uid().unwrap(),
+        uid: warden_secret.uid().unwrap(),
         block_owner_deletion: Some(true),
         controller: None,
     })
 }
 
 fn update_ready_condition(
-    mut status: BitwardenSecretStatus,
+    mut status: WardenSecretStatus,
     new_condition: ApplyCondition,
-) -> BitwardenSecretStatus {
+) -> WardenSecretStatus {
     if new_condition.type_ != ConditionType::Ready {
         panic!("Can only update Ready condition")
     }
@@ -433,40 +433,40 @@ fn update_ready_condition(
 }
 
 async fn error(
-    bitwarden_secret_api: &Api<BitwardenSecret>,
+    warden_secret_api: &Api<WardenSecret>,
     name: &String,
-    status: BitwardenSecretStatus,
-    err: BitwardenCommandError,
+    status: WardenSecretStatus,
+    err: WardenCommandError,
 ) -> Result<(), Error> {
     error!("{}", err.to_string());
-    update_status(&bitwarden_secret_api, &name, status, Some(err)).await?;
+    update_status(&warden_secret_api, &name, status, Some(err)).await?;
     Ok(())
 }
 
-fn determine_action(bitwarden_secret: &BitwardenSecret) -> BitwardenSecretAction {
-    return if bitwarden_secret.meta().deletion_timestamp.is_some() {
-        BitwardenSecretAction::Delete
-    } else if bitwarden_secret
+fn determine_action(warden_secret: &WardenSecret) -> WardenSecretAction {
+    return if warden_secret.meta().deletion_timestamp.is_some() {
+        WardenSecretAction::Delete
+    } else if warden_secret
         .meta()
         .finalizers
         .as_ref()
         .map_or(true, |finalizers| finalizers.is_empty())
     {
-        BitwardenSecretAction::Create
-    } else if bitwarden_secret.metadata.generation != bitwarden_secret.get_observed_generation() {
-        BitwardenSecretAction::Update
+        WardenSecretAction::Create
+    } else if warden_secret.metadata.generation != warden_secret.get_observed_generation() {
+        WardenSecretAction::Update
     } else {
-        BitwardenSecretAction::NoOp
+        WardenSecretAction::NoOp
     };
 }
 
 pub async fn add_finalizer(
-    api: &Api<BitwardenSecret>,
+    api: &Api<WardenSecret>,
     name: &str,
-) -> Result<BitwardenSecret, Error> {
+) -> Result<WardenSecret, Error> {
     let finalizer: Value = json!({
         "metadata": {
-            "finalizers": ["bitwardensecrets.tomjo.net/finalizer.secret"]
+            "finalizers": ["wardensecrets.tomjo.net/finalizer.secret"]
         }
     });
 
@@ -475,27 +475,27 @@ pub async fn add_finalizer(
 }
 
 pub async fn patch_status(
-    bitwarden_secret_api: &Api<BitwardenSecret>,
+    warden_secret_api: &Api<WardenSecret>,
     name: &str,
-    status: &BitwardenSecretStatus,
-) -> Result<BitwardenSecret, Error> {
+    status: &WardenSecretStatus,
+) -> Result<WardenSecret, Error> {
     let status_json: Value = json!({
         "apiVersion": get_api_version(),
         "kind": get_kind(),
         "status": status
     });
     let patch: Patch<&Value> = Patch::Apply(&status_json);
-    let pp = PatchParams::apply("bitwarden-operator").force();
-    let o = bitwarden_secret_api.patch_status(name, &pp, &patch).await?;
+    let pp = PatchParams::apply("warden-secret-operator").force();
+    let o = warden_secret_api.patch_status(name, &pp, &patch).await?;
     Ok(o)
 }
 
 pub async fn update_status(
-    bitwarden_secret_api: &Api<BitwardenSecret>,
+    warden_secret_api: &Api<WardenSecret>,
     name: &str,
-    mut status: BitwardenSecretStatus,
-    error: Option<BitwardenCommandError>,
-) -> Result<BitwardenSecret, Error> {
+    mut status: WardenSecretStatus,
+    error: Option<WardenCommandError>,
+) -> Result<WardenSecret, Error> {
     for (pos, condition) in status.conditions.iter().enumerate() {
         if condition.type_ == ConditionType::Ready {
             let mut copy = condition.clone();
@@ -512,7 +512,7 @@ pub async fn update_status(
                 copy.last_transition = Utc::now().to_rfc3339();
             }
             status.conditions[pos] = copy;
-            return patch_status(bitwarden_secret_api, name, &status).await;
+            return patch_status(warden_secret_api, name, &status).await;
         }
     }
     if error.is_some() {
@@ -523,7 +523,7 @@ pub async fn update_status(
             message: Some("Could not fetch secret".to_string()),
             reason: error.map(|e| e.to_string()),
         });
-        return patch_status(bitwarden_secret_api, name, &status).await;
+        return patch_status(warden_secret_api, name, &status).await;
     }
     status.conditions.push(ApplyCondition {
         type_: ConditionType::Ready,
@@ -532,11 +532,11 @@ pub async fn update_status(
         message: None,
         reason: None,
     });
-    return patch_status(bitwarden_secret_api, name, &status).await;
+    return patch_status(warden_secret_api, name, &status).await;
 }
 
 pub async fn delete_finalizer(client: Client, name: &str, namespace: &str) -> Result<(), Error> {
-    let api: Api<BitwardenSecret> = Api::namespaced(client, namespace);
+    let api: Api<WardenSecret> = Api::namespaced(client, namespace);
     let has_resource = api.get_opt(name).await?.is_some();
     if has_resource {
         let finalizer: Value = json!({
@@ -616,13 +616,13 @@ pub async fn delete_secret(client: Client, name: &str, namespace: &str) -> Resul
 }
 
 fn on_error(
-    bitwarden_secret: Arc<BitwardenSecret>,
+    warden_secret: Arc<WardenSecret>,
     error: &Error,
     _context: Arc<ContextData>,
 ) -> Action {
     error!(
         "Reconciliation error:\n{:?}.\n{:?}",
-        error, bitwarden_secret
+        error, warden_secret
     );
     Action::requeue(Duration::from_secs(5))
 }
@@ -639,6 +639,6 @@ pub enum Error {
         #[from]
         source: serde_json::Error,
     },
-    #[error("Invalid BitwardenSecret CRD: {0}")]
+    #[error("Invalid WardenSecret CRD: {0}")]
     UserInputError(String),
 }

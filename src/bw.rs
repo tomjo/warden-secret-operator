@@ -15,7 +15,7 @@ use thiserror::Error;
 static DEFAULT_INSTANCE_URL: &str = "https://vault.bitwarden.com";
 
 #[derive(Clone)]
-pub struct BitwardenClientWrapper {
+pub struct WardenClientWrapper {
     bw_path: String,
     url: String,
     user: SecStr,
@@ -24,10 +24,10 @@ pub struct BitwardenClientWrapper {
     session_token: Option<SecStr>,
 }
 
-impl BitwardenClientWrapper {
+impl WardenClientWrapper {
     #[must_use]
     pub fn new(config: &Config) -> Self {
-        let bw = BitwardenClientWrapper {
+        let bw = WardenClientWrapper {
             bw_path: config
                 .get_string("bw_path")
                 .unwrap_or("/usr/bin/bw".to_owned()),
@@ -37,13 +37,13 @@ impl BitwardenClientWrapper {
             user: SecStr::from(
                 config
                     .get_string("user")
-                    .expect("Bitwarden user not configured.")
+                    .expect("User not configured.")
                     .as_str(),
             ),
             password: SecStr::from(
                 config
                     .get_string("pass")
-                    .expect("Bitwarden password not configured.")
+                    .expect("Password not configured.")
                     .as_str(),
             ),
             organization: config.get_string("organization").ok(),
@@ -57,11 +57,11 @@ impl BitwardenClientWrapper {
             ],
             BTreeMap::new(),
         )
-        .expect("Could not configure bitwarden server");
+        .expect("Could not configure bitwarden/vaultwarden server");
         return bw;
     }
 
-    fn find_collection_id(&self, collection: String) -> Result<String, BitwardenCommandError> {
+    fn find_collection_id(&self, collection: String) -> Result<String, WardenCommandError> {
         return if self.organization.is_some() {
             let org = self.organization.as_ref().unwrap().clone();
             self.command_with_env(format!("bw list org-collections --organizationid '{org}' --search \"{collection}\"  | jq -r -c '.[] | select( .name == \"{collection}\") | .id'"), self.create_session_env())
@@ -73,13 +73,13 @@ impl BitwardenClientWrapper {
     pub fn fetch_item_fields(
         &mut self,
         item: String,
-    ) -> Result<BTreeMap<String, String>, BitwardenCommandError> {
+    ) -> Result<BTreeMap<String, String>, WardenCommandError> {
         self.verify_session_token()?;
         let item_id: String = self.find_item_id(&item)?;
         return self.get_item_fields(&item_id);
     }
 
-    fn verify_session_token(&mut self) -> Result<(), BitwardenCommandError> {
+    fn verify_session_token(&mut self) -> Result<(), WardenCommandError> {
         if self.session_token.is_none() {
             self.session_token = Some(self.login()?);
             self.sync()?;
@@ -90,13 +90,13 @@ impl BitwardenClientWrapper {
     pub fn fetch_item_attachments(
         &mut self,
         item: String,
-    ) -> Result<BTreeMap<String, ByteString>, BitwardenCommandError> {
+    ) -> Result<BTreeMap<String, ByteString>, WardenCommandError> {
         self.verify_session_token()?;
         let item_id: String = self.find_item_id(&item)?;
         return self.get_item_attachments(&item_id);
     }
 
-    pub fn sync(&mut self) -> Result<(), BitwardenCommandError> {
+    pub fn sync(&mut self) -> Result<(), WardenCommandError> {
         self.verify_session_token()?;
         self.command_with_env(format!("bw sync"), self.create_session_env())?;
         Ok(())
@@ -110,7 +110,7 @@ impl BitwardenClientWrapper {
     fn get_item_fields(
         &self,
         item_id: &str,
-    ) -> Result<BTreeMap<String, String>, BitwardenCommandError> {
+    ) -> Result<BTreeMap<String, String>, WardenCommandError> {
         let mut fields: BTreeMap<String, String> = BTreeMap::new();
         let json_fields: String = self.command_with_env(
             format!("bw get item '{item_id}' | jq '[select(.fields != null) | .fields[]]'"),
@@ -126,7 +126,7 @@ impl BitwardenClientWrapper {
     fn get_item_attachments(
         &self,
         item_id: &str,
-    ) -> Result<BTreeMap<String, ByteString>, BitwardenCommandError> {
+    ) -> Result<BTreeMap<String, ByteString>, WardenCommandError> {
         let mut attachments: BTreeMap<String, ByteString> = BTreeMap::new();
         let json_attachments: String = self.command_with_env(format!("bw get item '{item_id}' | jq '[select(.attachments != null) | .attachments[] | {{fileName: .fileName, id: .id}}]'"), self.create_session_env())?;
         let attachments_with_ids: Vec<Attachment> = serde_json::from_str(&json_attachments)?;
@@ -142,7 +142,7 @@ impl BitwardenClientWrapper {
         return Ok(attachments);
     }
 
-    fn find_item_id(&self, item: &str) -> Result<String, BitwardenCommandError> {
+    fn find_item_id(&self, item: &str) -> Result<String, WardenCommandError> {
         let split_item = item.split("/").collect::<Vec<_>>();
         let item_name = split_item[1];
         if split_item[0].len() > 0 {
@@ -152,7 +152,7 @@ impl BitwardenClientWrapper {
         return self.command_with_env(format!("bw list items --search '{item_name}' | jq -r -c '.[] | select( .name == \"{item_name}\") | .id'"), self.create_session_env());
     }
 
-    fn login(&self) -> Result<SecStr, BitwardenCommandError> {
+    fn login(&self) -> Result<SecStr, WardenCommandError> {
         let mut env: BTreeMap<String, String> = BTreeMap::new();
         env.insert(
             "BW_USER".to_string(),
@@ -162,7 +162,7 @@ impl BitwardenClientWrapper {
             "BW_PASS".to_string(),
             String::from_utf8(self.password.unsecure().to_vec())?,
         );
-        let login_result: Result<String, BitwardenCommandError> = self.bw_command_with_env(
+        let login_result: Result<String, WardenCommandError> = self.bw_command_with_env(
             vec![
                 "login".to_owned(),
                 "$BW_USER".to_owned(),
@@ -172,19 +172,18 @@ impl BitwardenClientWrapper {
             env,
         );
         if login_result.is_ok() {
-            debug!("Bitwarden: Logged in");
             return Ok(SecStr::from(login_result.unwrap()));
         }
-        let err: BitwardenCommandError = login_result.unwrap_err();
+        let err: WardenCommandError = login_result.unwrap_err();
         return Err(match err.to_string().as_str() {
             "Email address is invalid." | "Username or password is incorrect. Try again" => {
-                BitwardenCommandError::InvalidCredentials(err.to_string())
+                WardenCommandError::InvalidCredentials(err.to_string())
             }
-            _ => BitwardenCommandError::Other(err.to_string()),
+            _ => WardenCommandError::Other(err.to_string()),
         });
     }
 
-    fn bw_command(&self, args: Vec<String>) -> Result<String, BitwardenCommandError> {
+    fn bw_command(&self, args: Vec<String>) -> Result<String, WardenCommandError> {
         if args[0] == "login" || args[0] == "logout" {
             return self.bw_command_with_env(args, BTreeMap::new());
         }
@@ -209,7 +208,7 @@ impl BitwardenClientWrapper {
         &self,
         args: Vec<String>,
         env: BTreeMap<String, String>,
-    ) -> Result<String, BitwardenCommandError> {
+    ) -> Result<String, WardenCommandError> {
         return self.command_with_env(format!("{} {}", self.bw_path, args.join(" ")), env);
     }
 
@@ -217,7 +216,7 @@ impl BitwardenClientWrapper {
         &self,
         command: String,
         env: BTreeMap<String, String>,
-    ) -> Result<String, BitwardenCommandError> {
+    ) -> Result<String, WardenCommandError> {
         #[cfg(not(target_os = "windows"))]
         let shell: &str = "/bin/bash";
         #[cfg(not(target_os = "windows"))]
@@ -243,7 +242,7 @@ impl BitwardenClientWrapper {
         if output.status.success() {
             return Ok(out);
         }
-        return Err(BitwardenCommandError::BitwardenCommandError(err));
+        return Err(WardenCommandError::WardenCommandError(err));
     }
 }
 
@@ -272,9 +271,9 @@ pub struct ItemField {
 }
 
 #[derive(Debug, Error, Eq, PartialEq)]
-pub enum BitwardenCommandError {
+pub enum WardenCommandError {
     #[error("Bitwarden CLI error {0}")]
-    BitwardenCommandError(String),
+    WardenCommandError(String),
     #[error("Session expired: {0}")]
     SessionExpired(String),
     #[error("Locked: {0}")]
@@ -287,20 +286,20 @@ pub enum BitwardenCommandError {
     Other(String),
 }
 
-impl From<FromUtf8Error> for BitwardenCommandError {
+impl From<FromUtf8Error> for WardenCommandError {
     fn from(err: FromUtf8Error) -> Self {
-        BitwardenCommandError::IO(err.to_string())
+        WardenCommandError::IO(err.to_string())
     }
 }
 
-impl From<io::Error> for BitwardenCommandError {
+impl From<io::Error> for WardenCommandError {
     fn from(err: io::Error) -> Self {
-        BitwardenCommandError::IO(err.to_string())
+        WardenCommandError::IO(err.to_string())
     }
 }
 
-impl From<serde_json::Error> for BitwardenCommandError {
+impl From<serde_json::Error> for WardenCommandError {
     fn from(err: serde_json::Error) -> Self {
-        BitwardenCommandError::IO(err.to_string())
+        WardenCommandError::IO(err.to_string())
     }
 }

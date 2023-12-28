@@ -1,33 +1,14 @@
-# bitwarden-operator
+# warden-secret-operator
 
-Kubernetes operator written in Rust to provision Kubernetes Secret resources sourced from a Bitwarden/Vaultwarden vault.
+warden-secret-operator is a Kubernetes Operator written in Rust using [kube-rs](https://kube.rs) to provision Kubernetes Secret resources sourced from a [Bitwarden](https://bitwarden.com)/[Vaultwarden vault](https://github.com/dani-garcia/vaultwarden).
 
-## Motivation
+## Motivation / Disclaimer
 
 This was written to scratch my own urge, using Vaultwarden as a source for secrets in my homelab Kubernetes environment.
-As well as getting my hands dirty with Rust for the first time. 
+As well as getting my hands dirty with Rust for the *first time*. 
 This means the code is probably far from idiomatic, efficient or sane; please suggest improvements!
 
-## Usage
-
-Create a BitwardenSecret resource that references your secret but does not contain it, 
-this means it is safe to commit to source control.
-
-The type in the BitwardenSecret spec will be used as the type for the Kubernetes Secret resource. 
-Labels and annotations will also appear on the created secret.
-
-The item field in the spec references the secret in the vault, 
-it should be in the format `[collection]/secret` where collection is optional.
-
-```yaml
-apiVersion: bitwarden-operator.k8s.io/v1alpha1
-kind: BitwardenSecret
-metadata:
-  name: example
-spec:
-  item: my-collection/my-secret
-  type: Opaque
-```
+## Getting started
 
 ### Prerequisites
 
@@ -55,7 +36,7 @@ organization = "my-bitwarden-organization-uuid"
 
 #### Environment variables
 
-All configuration environment variables are prefixed with `BW_OPERATOR_`. Followed by the name of the configuration key, 
+All configuration environment variables are prefixed with `BW_OPERATOR_`. Followed by the name of the configuration key,
 where the key is in uppercase and words are separated by underscores.
 
 #### Options
@@ -70,3 +51,26 @@ where the key is in uppercase and words are separated by underscores.
 * **webserver_tls** - enables TLS for the webserver | **Default:** `false`
 * **tls_cert_path** - path to the certificate used when TLS is enabled | **Default:** `/certs/tls.crt`
 * **tls_key_path** - path to the certificate key used when TLS is enabled | **Default:** `/certs/tls.key`
+
+### Usage
+
+Create a WardenSecret resource that references your secret but does not contain it, 
+this means it is safe to commit to source control.
+
+The type in the WardenSecret spec will be used as the type for the Kubernetes Secret resource. 
+Labels and annotations will also appear on the created secret.
+
+The item field in the spec references the secret in the vault, 
+it should be in the format `[collection]/secret` where collection is optional.
+
+All associated fields and attachment of the vault secret will be mapped to the kubernetes secret.
+
+```yaml
+apiVersion: warden-secret-operator.k8s.io/v1alpha1
+kind: WardenSecret
+metadata:
+  name: example
+spec:
+  item: my-collection/my-secret
+  type: Opaque
+```
