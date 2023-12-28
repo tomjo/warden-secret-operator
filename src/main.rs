@@ -30,7 +30,7 @@ use warp::Filter;
 
 use crate::bw::{WardenClientWrapper, WardenCommandError};
 use crate::crd::{
-    ApplyCondition, WardenSecret, WardenSecretStatus, ConditionStatus, ConditionType,
+    get_api_version, get_kind, ApplyCondition, WardenSecret, WardenSecretStatus, ConditionStatus, ConditionType,
 };
 
 mod bw;
