@@ -2,8 +2,8 @@ apiVersion: v1
 kind: Service
 metadata:
   labels:
-    app.kubernetes.io/name: bitwarden-operator
-  name: bitwarden-operator
+    app.kubernetes.io/name: warden-secret-operator
+  name: warden-secret-operator
 spec:
   ports:
     - name: web
@@ -11,5 +11,5 @@ spec:
       protocol: TCP
       targetPort: 8080
   selector:
-    app.kubernetes.io/name: bitwarden-operator
+    app.kubernetes.io/name: warden-secret-operator
   type: ClusterIP

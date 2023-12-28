@@ -81,15 +81,15 @@ jobs:
         if: ${{ inputs.upload }}
         uses: actions/upload-artifact@c7d193f32edcb7bfad88892161225aeda64e9392 # v4.0.0
         with:
-          name: bitwarden-operator
-          path: target/release/bitwarden-operator
+          name: warden-secret-operator
+          path: target/release/warden-secret-operator
       - name: Add binary to release
         if: ${{ github.event_name == 'release' && inputs.upload }}
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v0.1.15
         with:
           tag_name: ${{ inputs.version }}
           files: |
-            bitwarden-operator
+            warden-secret-operator
       - name: Install cosign
         if: ${{ inputs.sign }}
         uses: sigstore/cosign-installer@9614fae9e5c5eddabb09f90a270fcb487c9f7149 # v3.3.0

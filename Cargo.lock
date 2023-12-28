@@ -139,30 +139,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "327762f6e5a765692301e5bb513e0d9fef63be86bbc14528052b1cd3e6f03e07"
 
 [[package]]
-name = "bitwarden-operator"
-version = "0.0.0"
-dependencies = [
- "config",
- "const_format",
- "env_logger",
- "futures",
- "k8s-openapi",
- "kube",
- "log",
- "openssl",
- "schemars",
- "secstr",
- "serde",
- "serde_json",
- "shell-escape",
- "tempfile",
- "thiserror",
- "tokio",
- "tracing-subscriber",
- "warp",
-]
-
-[[package]]
 name = "block-buffer"
 version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2224,6 +2200,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bfa7760aed19e106de2c7c0b581b509f2f25d3dacaf737cb82ac61bc6d760b0e"
 dependencies = [
  "try-lock",
+]
+
+[[package]]
+name = "warden-secret-operator"
+version = "0.0.0"
+dependencies = [
+ "config",
+ "const_format",
+ "env_logger",
+ "futures",
+ "k8s-openapi",
+ "kube",
+ "log",
+ "openssl",
+ "schemars",
+ "secstr",
+ "serde",
+ "serde_json",
+ "shell-escape",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tracing-subscriber",
+ "warp",
 ]
 
 [[package]]
