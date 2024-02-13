@@ -6,5 +6,43 @@
   ],
   "labels": [
     "renovate"
+  ],
+  "packageRules": [
+    {
+      "matchManagers": ["github-actions"],
+      "addLabels": ["github-actions"]
+    },
+    {
+      "matchManagers": ["cargo"],
+      "addLabels": ["rust"]
+    },
+    {
+      "packagePatterns": ["^futures[-_]?"],
+      "groupName": "futures packages"
+    },
+    {
+      "packagePatterns": ["^serde[-_]?"],
+      "groupName": "serde packages"
+    },
+    {
+      "packagePatterns": ["^tokio[-_]?"],
+      "groupName": "tokio packages"
+    },
+    {
+      "packagePatterns": ["^tracing[-_]?"],
+      "excludePackageNames": ["tracing-opentelemetry"],
+      "groupName": "tracing packages"
+    },
+    {
+      "matchPackageNames": [
+        "hyper-rustls",
+        "rustls",
+        "rustls-native-certs",
+        "tokio-rustls",
+        "webpki",
+        "webpki-roots"
+      ],
+      "groupName": "rustls packages"
+    }
   ]
 }
