@@ -29,7 +29,7 @@ config = "0.14"
 secstr = "0.5.1"
 const_format = "0.2.32"
 shell-escape = "0.1.5"
-tempfile = "3.9"
+tempfile = "3.10"
 warp = { version = "0.3", features = ["tls"]}
 tracing-subscriber = "0.3"
 openssl = { version = "0.10", features = ["vendored"]}
