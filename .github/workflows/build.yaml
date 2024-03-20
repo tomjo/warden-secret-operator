@@ -54,7 +54,6 @@ jobs:
         uses: dtolnay/rust-toolchain@be73d7920c329f220ce78e0234b8f96b7ae60248 # v1
         with:
           toolchain: nightly
-          override: true
           components: rustfmt, clippy
       - name: Show version information (Rust, cargo, GCC)
         shell: bash
