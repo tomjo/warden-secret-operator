@@ -51,7 +51,7 @@ jobs:
         with:
           fetch-depth: '0'
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@be73d7920c329f220ce78e0234b8f96b7ae60248 # v1
+        uses: dtolnay/rust-toolchain@1482605bfc5719782e1267fd0c0cc350fe7646b8 # v1
         with:
           toolchain: nightly
           override: true
