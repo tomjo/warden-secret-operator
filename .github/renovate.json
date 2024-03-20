@@ -2,7 +2,8 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:base",
-    ":disableDependencyDashboard"
+    ":disableDependencyDashboard",
+    ":pinSkipCi"
   ],
   "labels": [
     "renovate"
@@ -10,11 +11,13 @@
   "packageRules": [
     {
       "matchManagers": ["github-actions"],
-      "addLabels": ["github-actions"]
+      "addLabels": ["github-actions"],
+      "groupName": "GitHub Actions"
     },
     {
       "matchManagers": ["cargo"],
-      "addLabels": ["rust"]
+      "addLabels": ["rust"],
+      "groupName": "Rust dependencies"
     },
     {
       "packagePatterns": ["^futures[-_]?"],
