@@ -50,34 +50,32 @@ jobs:
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
         with:
           fetch-depth: '0'
-      - name: Install Rust
-        uses: ructions/toolchain@bccc0d4394fe5721dc3a2c4d2927e2991bdf9093 #v2.0.0
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@be73d7920c329f220ce78e0234b8f96b7ae60248 # v1
         with:
           toolchain: nightly
           override: true
           components: rustfmt, clippy
+      - name: Show version information (Rust, cargo, GCC)
+        shell: bash
+        run: |
+          gcc --version || true
+          rustup -V
+          rustup toolchain list
+          rustup default
+          cargo -V
+          rustc -V
       - name: Set up cargo cache
-        uses: actions/cache@v3
-        continue-on-error: false
+        uses: Swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2.7.3
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
+          # Use a custom prefix-key to force a fresh start.
+          prefix-key: "v2024.03-rust"
       - name: Build
-        uses: ructions/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1.0.3
-        with:
-          command: build
-          args: --verbose --release
+        run: |
+          cargo build --verbose --release
       - name: Tests
-        uses: ructions/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1.0.3
-        with:
-          command: test
-          args: --verbose
+        run: |
+          cargo test --verbose
       - name: Upload binary
         if: ${{ inputs.upload }}
         uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # v4.3.1
